@@ -18,31 +18,35 @@ export function paginaWeb({ ws, admin }) {
   )}
   * { box-sizing:border-box; }
   html, body { background:var(--sfondo); }
-  body { margin:0; min-height:100vh; font:16px/1.45 system-ui, sans-serif; color:var(--testo); display:flex; justify-content:center; }
-  .logo { height:48px; max-width:220px; object-fit:contain; margin-bottom:8px; }
-  main { width:100%; max-width:560px; padding:24px 16px; display:flex; flex-direction:column; gap:16px; min-height:100vh; }
-  h1 { font-size:21px; margin:0; }
-  .tenue { color:var(--tenue); font-size:14px; margin:0; }
+  body { margin:0; min-height:100vh; font:17px/1.5 system-ui, sans-serif; color:var(--testo); display:flex; justify-content:center; }
+  main { width:100%; max-width:620px; padding:20px 16px 28px; display:flex; flex-direction:column; gap:16px; min-height:100vh; }
+  .hero { text-align:center; padding:30px 12px 20px; border-radius:22px;
+    background:color-mix(in srgb, var(--oro) 7%, var(--sfondo));
+    border:1px solid color-mix(in srgb, var(--oro) 28%, var(--bordo)); }
+  .logo { height:76px; max-width:300px; object-fit:contain; margin-bottom:10px; }
+  h1 { font-size:28px; margin:0; letter-spacing:-.02em; }
+  .tenue { color:var(--tenue); font-size:15px; margin:6px 0 0; }
   .barra { display:flex; gap:10px; align-items:center; }
   button { padding:12px 18px; border-radius:999px; border:0; font:inherit; font-weight:600; cursor:pointer; color:#fff; background:var(--verde); }
-  button.chiudi { background:var(--rosso); }
+  #chiama { padding:15px 36px; font-size:19px; box-shadow:0 6px 20px color-mix(in srgb, var(--verde) 32%, transparent); }
+  button.chiudi { background:var(--rosso); box-shadow:none; }
   button.muto { background:var(--carta); color:var(--testo); border:1px solid var(--bordo); }
   button:disabled { opacity:.4; cursor:default; }
   .stato { font-size:14px; color:var(--tenue); flex:1; text-align:right; }
-  .livello { height:6px; border-radius:3px; background:var(--bordo); overflow:hidden; }
+  .livello { height:7px; border-radius:4px; background:var(--bordo); overflow:hidden; }
   .livello div { height:100%; width:0; background:var(--oro); transition:width .08s; }
-  #chat { flex:1; display:flex; flex-direction:column; gap:8px; overflow-y:auto; padding:4px 0; }
-  .msg { max-width:85%; padding:9px 13px; border-radius:16px; background:var(--carta); border:1px solid var(--bordo); white-space:pre-wrap; }
+  #chat { flex:1; min-height:230px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; padding:4px 0; }
+  .msg { max-width:85%; font-size:16px; padding:11px 16px; border-radius:18px; background:var(--carta); border:1px solid var(--bordo); white-space:pre-wrap; }
   .msg.cliente { align-self:flex-end; background:color-mix(in srgb, var(--oro) 22%, var(--carta)); border-color:transparent; }
   .msg small { display:block; font-size:12px; color:var(--tenue); }
   form { display:flex; gap:8px; }
-  input { flex:1; min-width:0; padding:12px; border-radius:999px; border:1px solid var(--bordo); background:var(--carta); color:var(--testo); font:inherit; }
+  input { flex:1; min-width:0; padding:13px 17px; border-radius:999px; border:1px solid var(--bordo); background:var(--carta); color:var(--testo); font:inherit; }
 </style></head>
 <body><main>
-  <div>
+  <div class="hero">
     ${tagLogo()}
-    <h1>📞 ${esc(impostazioni().attivita.nome)}</h1>
-    <p class="tenue">Chiamata di prova dal browser. Meglio con le cuffie: così il receptionist non sente sé stesso. <a href="${esc(admin)}">⚙️ Impostazioni</a></p>
+    <h1>${esc(impostazioni().attivita.nome)}</h1>
+    <p class="tenue">Parla con il receptionist, direttamente da qui. Meglio con le cuffie.</p>
   </div>
   <div class="barra">
     <button id="chiama">Chiama</button>
