@@ -40,7 +40,10 @@ const tag = (nome) => new RegExp(`<(?:[\\w-]+:)?${nome}\\b[^>]*>([\\s\\S]*?)</(?
 const primo = (xml, nome) => { const m = tag(nome).exec(xml); return m ? m[1] : null; };
 const tutti = (xml, nome) => [...xml.matchAll(tag(nome))].map((m) => m[1]);
 const href = (xml) => { const h = primo(xml, 'href'); return h ? decodeXml(h.trim()) : null; };
-const decodeXml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+const decodeXml = (s) => s
+  .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n))) // Nextcloud codifica qui il fine riga (&#13;)
+  .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16)))
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 const assoluto = (base, h) => new URL(h, base).toString();
 
 const PROP = (corpo) => `<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:i="http://apple.com/ns/ical/"><d:prop>${corpo}</d:prop></d:propfind>`;
