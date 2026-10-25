@@ -149,9 +149,13 @@ export function paginaAdmin({ api, web, feed }) {
       <div><label>Account SID <small>(AC…)</small></label><input data-k="twilio.accountSid" autocomplete="off"></div>
       <div><label>API Key SID <small>(SK…, vuoto se usi l'Auth Token)</small></label><input data-k="twilio.apiKey" autocomplete="off"></div>
       <div><label>API Key secret o Auth Token <small id="twInfo"></small></label><input type="password" data-k="twilio.apiSecret" autocomplete="new-password" placeholder="lascia vuoto per non cambiarlo"></div>
+      <div><label>Auth Token dell'account <small id="twInfoAuth"></small></label><input type="password" data-k="twilio.authToken" autocomplete="new-password" placeholder="lascia vuoto per non cambiarlo"></div>
       <div><label>Indirizzo pubblico del server</label><input data-k="twilio.urlPubblico" placeholder="https://receptionist.tuodominio.it"></div>
       <div><label>Numero che risponde</label><input data-k="twilio.numero" placeholder="+39 02 1234567" list="numeriTwilio"><datalist id="numeriTwilio"></datalist></div>
     </div>
+    <p class="aiuto" style="margin-top:10px"><strong>Auth Token:</strong> serve solo a verificare che le chiamate arrivino davvero da Twilio (e non da qualcuno che ha scoperto l'indirizzo). Lo trovi nella Console Twilio, pagina principale dell'account. Twilio firma sempre con l'Auth Token primario, anche se per il resto usi una API Key. Se come credenziali usi Account SID + Auth Token, è lo stesso valore di sopra e lo prendo da lì.</p>
+    <div id="avvisoFirma" class="aiuto" style="display:none;color:var(--giallo)">⚠️ Firma non verificata: senza Auth Token il server accetta le chiamate di chiunque conosca l'indirizzo segreto. Inserisci l'Auth Token e salva.</div>
+    <div id="firmaOk" class="aiuto" style="display:none;color:var(--accento)">✅ Firma delle chiamate Twilio verificata.</div>
     <div class="riga" style="margin-top:12px"><button class="secondario" type="button" id="twVerifica">Verifica credenziali</button><span class="esito" id="twEsito"></span></div>
     <h2 style="margin-top:22px">Collegare il numero</h2>
     <p class="aiuto">Su Twilio: Phone Numbers → il tuo numero → Voice configuration → "A call comes in" = Webhook, <strong>HTTP POST</strong>, con questo indirizzo. Oppure lo imposto io col pulsante.</p>
@@ -178,7 +182,7 @@ export function paginaAdmin({ api, web, feed }) {
     <label class="check" style="margin-top:12px"><input type="checkbox" data-k="email.confermaAlCliente"> Manda la conferma al cliente se ha lasciato l'email</label>
     <div class="riga" style="margin-top:12px"><input id="emailProva" placeholder="la tua email" style="max-width:280px"><button class="secondario" type="button" id="provaEmail">Manda email di prova</button></div>
     <h2 style="margin-top:22px">SMS di conferma</h2>
-    <p class="aiuto">Con Twilio configurato nel file .env, al cliente che chiama arriva un SMS con giorno e ora.</p>
+    <p class="aiuto">Con Twilio configurato (scheda Telefono, oppure nel file .env), al cliente che chiama arriva un SMS con giorno e ora.</p>
     <label class="check"><input type="checkbox" data-k="sms.attivo"> SMS attivi</label>
   </section>
 </main>
@@ -322,6 +326,7 @@ function riempi() {
   }
   $('#pwInfo').textContent = dati.email.passwordImpostata ? '(impostata)' : '(non impostata)';
   $('#twInfo').textContent = dati.twilio.segretoImpostato ? '(impostato)' : '';
+  $('#twInfoAuth').textContent = dati.twilio.authTokenImpostato ? '(impostato)' : '';
   statoTwilio();
 }
 function raccogli() {
@@ -383,9 +388,11 @@ async function statoTwilio() {
     const s = await chiedi('/twilio/stato');
     $('#twWebhook').textContent = s.webhook || 'metti prima l\u2019indirizzo pubblico e salva';
     $('#avvisoSegreto').style.display = s.segretoLocale && s.webhook ? 'block' : 'none';
+    $('#avvisoFirma').style.display = !s.firma && s.webhook ? 'block' : 'none';
+    $('#firmaOk').style.display = s.firma && s.webhook ? 'block' : 'none';
   } catch {}
 }
-const salvaPrima = () => chiedi('/impostazioni', { method: 'POST', body: raccogli() }).then((d) => { dati = d; });
+const salvaPrima = () => chiedi('/impostazioni', { method: 'POST', body: raccogli() }).then((d) => { dati = d; $('#twInfo').textContent = d.twilio.segretoImpostato ? '(impostato)' : ''; $('#twInfoAuth').textContent = d.twilio.authTokenImpostato ? '(impostato)' : ''; statoTwilio(); });
 $('#twVerifica').onclick = async () => {
   $('#twEsito').textContent = 'controllo…';
   try {

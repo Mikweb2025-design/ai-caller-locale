@@ -1,6 +1,7 @@
 // Importa dal sito: legge le pagine di un sito (stesso dominio), ne tira fuori il testo e chiede
 // a Claude Code di estrarre tutto quello che serve al receptionist per rispondere al telefono.
 import { completa } from './cervello.mjs';
+import { recupera, controllaUrl } from './rete.mjs';
 
 const MAX_PAGINE = 30;
 const MAX_TESTO = 120000; // caratteri mandati a Claude
@@ -46,15 +47,17 @@ function collegamenti(html, base) {
 }
 
 // Legge fino a MAX_PAGINE pagine partendo dall'indirizzo dato: prima la home e le pagine "importanti".
-export async function leggiSito(indirizzo, { avanzamento = () => {} } = {}) {
+export async function leggiSito(indirizzo, { avanzamento = () => {}, risolvi } = {}) {
+  const controlli = { privati: false, ...(risolvi ? { risolvi } : {}) }; // solo siti pubblici (ALLOW_PRIVATE_FETCH=1 per la rete interna)
   let partenza = indirizzo.trim();
   if (!/^https?:\/\//i.test(partenza)) partenza = 'https://' + partenza;
+  await controllaUrl(partenza, controlli); // indirizzo non consentito: errore chiaro subito
   const daLeggere = [partenza.replace(/\/$/, '')];
   const visti = new Set(daLeggere);
   const pagine = [];
   // anche la sitemap, se c'è, per non perdere pagine non collegate dal menu
   try {
-    const r = await fetch(new URL('/sitemap.xml', partenza), { signal: AbortSignal.timeout(8000) });
+    const r = await recupera(new URL('/sitemap.xml', partenza), { signal: AbortSignal.timeout(8000) }, controlli);
     if (r.ok) for (const [, loc] of (await r.text()).matchAll(/<loc>([^<]+)<\/loc>/g)) {
       const u = loc.trim().replace(/\/$/, '');
       if (!/sitemap/i.test(u) && !DA_SALTARE.test(u) && !visti.has(u)) { visti.add(u); daLeggere.push(u); }
@@ -65,13 +68,13 @@ export async function leggiSito(indirizzo, { avanzamento = () => {} } = {}) {
     daLeggere.sort((a, b) => (IMPORTANTI.test(b) ? 1 : 0) - (IMPORTANTI.test(a) ? 1 : 0));
     const u = daLeggere.shift();
     try {
-      const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (receptionist AI; lettura informazioni pubbliche)', 'Accept-Language': 'it' }, signal: AbortSignal.timeout(12000) });
+      const r = await recupera(u, { headers: { 'User-Agent': 'Mozilla/5.0 (receptionist AI; lettura informazioni pubbliche)', 'Accept-Language': 'it' }, signal: AbortSignal.timeout(12000) }, controlli);
       if (!r.ok || !/text\/html/i.test(r.headers.get('content-type') || '')) continue;
       const html = await r.text();
       const p = testoDaHtml(html);
       if (p.testo.length > 80) pagine.push({ url: u, ...p });
       avanzamento(`lette ${pagine.length} pagine…`);
-      for (const l of collegamenti(html, r.url)) if (!visti.has(l)) { visti.add(l); daLeggere.push(l); }
+      for (const l of collegamenti(html, r.urlFinale)) if (!visti.has(l)) { visti.add(l); daLeggere.push(l); }
     } catch {}
   }
   if (!pagine.length) throw new Error('nessuna pagina leggibile a questo indirizzo');

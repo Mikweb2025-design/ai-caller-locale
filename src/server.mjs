@@ -1,11 +1,11 @@
 // Il server del receptionist: risponde a Twilio quando arriva una chiamata, serve la pagina
 // per chiamare dal browser e collega l'audio alla pipeline locale
-// (faster-whisper → Claude Code → Qwen3-TTS).
+// (Parakeet → Claude Code o servizio compatibile OpenAI → Qwen3-TTS).
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { CONFIG } from './config.mjs';
-import { twilio, twilioConfigurato, urlPubblico, indirizzoWebhook, verifica, collegaNumero, chiamaNumero, SEGRETO } from './twilio.mjs';
+import { twilio, twilioConfigurato, firmaAttiva, firmaValida, urlPubblico, indirizzoWebhook, verifica, collegaNumero, chiamaNumero, SEGRETO } from './twilio.mjs';
 import { ChiamataTwilio } from './twilio-stream.mjs';
 import { gestisciChiamata, preriscalda, RIEMPITIVO } from './chiamata.mjs';
 import { paginaPannello } from './pannello.mjs';
@@ -56,13 +56,23 @@ const server = http.createServer(async (req, res) => {
     if (rifiutaSenzaSegreto(req)) { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end(MESSAGGIO_SEGRETO); }
     // Twilio: è arrivata (o è partita) una chiamata → rispondi con le istruzioni TwiML
     if (req.method === 'POST' && url.pathname === `/twilio/${segreto}/voce`) {
-      const p = Object.fromEntries(new URLSearchParams(await leggiCorpo(req)));
+      const corpoForm = new URLSearchParams(await leggiCorpo(req));
+      // Con l'Auth Token impostato, vale solo ciò che Twilio ha firmato (l'URL firmato è quello pubblico, non l'Host della richiesta)
+      const firma = firmaValida(req.url, corpoForm, req.headers['x-twilio-signature']);
+      if (!firma.ok) {
+        console.error(`⛔ webhook Twilio rifiutato (403): ${firma.motivo}`);
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Firma Twilio non valida.\n');
+      }
+      const p = Object.fromEntries(corpoForm);
       const inUscita = url.searchParams.get('uscita') === '1';
       const cliente = inUscita ? p.To : p.From;
       const numeroTwilio = inUscita ? p.From : p.To;
       console.log(`📞 ${p.CallSid} ${inUscita ? 'in uscita verso' : 'da'} ${cliente}`);
       preriscalda(p.CallSid, cliente); // Claude Code si avvia mentre squilla
-      const host = urlPubblico() ? new URL(urlPubblico()).host : req.headers.host;
+      // lo stream torna sullo stesso indirizzo pubblico (host e eventuale prefisso), non sull'Host della richiesta
+      const base = urlPubblico() ? new URL(urlPubblico()) : null;
+      const host = base ? base.host + base.pathname.replace(/\/$/, '') : req.headers.host;
       res.writeHead(200, { 'Content-Type': 'text/xml' });
       return res.end(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -127,7 +137,7 @@ const server = http.createServer(async (req, res) => {
       const imp = percorso.match(/^\/sito\/importa\/(\w+)$/);
       if (imp) { const l = statoImportazione(imp[1]); return l ? json(200, l) : json(404, { errore: 'importazione non trovata' }); }
       // Twilio: stato, verifica delle credenziali, collegamento del webhook, chiamata di prova
-      if (percorso === '/twilio/stato') return json(200, { webhook: indirizzoWebhook(), segretoLocale: segreto === 'locale', configurato: twilioConfigurato(), numero: twilio().numero });
+      if (percorso === '/twilio/stato') return json(200, { webhook: indirizzoWebhook(), segretoLocale: segreto === 'locale', configurato: twilioConfigurato(), numero: twilio().numero, firma: firmaAttiva() });
       if (percorso.startsWith('/twilio/') && req.method === 'POST') {
         try {
           if (percorso === '/twilio/verifica') return json(200, await verifica());
@@ -202,7 +212,10 @@ const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   if (rifiutaSenzaSegreto(req)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); return socket.destroy(); }
   const [, primo, tipo, gettone] = new URL(req.url, 'http://x').pathname.split('/');
-  const locale = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !req.headers['cf-connecting-ip'];
+  // gettone speciale 'prova' (per i test locali): solo connessione diretta da questo computer, senza
+  // intestazioni di proxy, con Host locale; e mai se c'è un URL pubblico con SEGRETO (server esposto)
+  const locale = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !daProxy(req) && ospiteLocale(req)
+    && !(segreto !== 'locale' && urlPubblico());
   const valido = tipo === 'web'
     ? gettone === segreto
     : tipo === 'tel' && ((gettoni.get(gettone) ?? 0) > Date.now() || (locale && gettone === 'prova'));

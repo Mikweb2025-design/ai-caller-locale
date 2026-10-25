@@ -1,12 +1,20 @@
 // Le impostazioni che si cambiano dal pannello admin: l'attività, gli orari, il calendario,
 // le email e gli SMS. Stanno in dati/impostazioni.json; quello che manca prende i valori qui sotto.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { RADICE } from './config.mjs';
 
-export const CARTELLA_DATI = join(RADICE, 'dati');
+// DATI_DIR cambia la cartella dei dati (per i test: un'istanza separata non tocca quella vera)
+export const CARTELLA_DATI = process.env.DATI_DIR ? resolve(process.env.DATI_DIR) : join(RADICE, 'dati');
 mkdirSync(CARTELLA_DATI, { recursive: true, mode: 0o700 });
 const FILE = join(CARTELLA_DATI, 'impostazioni.json');
+
+// Contiene chiavi, password e dati dei clienti: cartella solo per te (700), file riservati (600), anche se esistevano già.
+export function proteggi(...file) {
+  try { chmodSync(CARTELLA_DATI, 0o700); } catch {}
+  for (const f of file) try { if (existsSync(f)) chmodSync(f, 0o600); } catch {}
+}
+proteggi(FILE);
 
 export const GIORNI = ['lunedi', 'martedi', 'mercoledi', 'giovedi', 'venerdi', 'sabato', 'domenica'];
 
@@ -30,7 +38,6 @@ export const PREDEFINITE = {
     nome: process.env.NOME_RECEPTIONIST || 'Luca',
     genere: process.env.GENERE_RECEPTIONIST || 'm',
     saluto: '', // vuoto = "<attività>, buongiorno! Sono <nome>, mi dica."
-    personaggio: 'standard', // 'standard' | 'napoletano'
     note: '', // istruzioni in più, in italiano
   },
   orari: {
@@ -77,6 +84,7 @@ export const PREDEFINITE = {
     accountSid: '',
     apiKey: '', // API Key SID (SK...), oppure vuoto se usi l'Auth Token
     apiSecret: '', // API Key secret oppure Auth Token
+    authToken: '', // Auth Token primario dell'account: serve solo a verificare la firma delle chiamate in arrivo
     numero: '',
     urlPubblico: '', // https://... da cui Twilio raggiunge questo server
   },
@@ -98,6 +106,7 @@ export function impostazioni() {
   if (!cache) {
     let salvate = {};
     if (existsSync(FILE)) { try { salvate = JSON.parse(readFileSync(FILE, 'utf8')); } catch (e) { console.error('impostazioni.json illeggibile:', e.message); } }
+    if (salvate.receptionist) delete salvate.receptionist.personaggio; // campo tolto: nelle impostazioni vecchie si ignora
     cache = unisci(PREDEFINITE, salvate);
   }
   return cache;
@@ -111,6 +120,7 @@ export function salvaImpostazioni(nuove) {
   // la password non torna mai al browser: se arriva vuota, resta quella di prima
   if (nuove?.email && !nuove.email.password) nuove.email.password = attuali.email.password;
   if (nuove?.twilio && !nuove.twilio.apiSecret) nuove.twilio.apiSecret = nuove.twilio.accountSid === '' ? '' : attuali.twilio?.apiSecret || ''; // senza account niente token
+  if (nuove?.twilio && !nuove.twilio.authToken) nuove.twilio.authToken = nuove.twilio.accountSid === '' ? '' : attuali.twilio?.authToken || ''; // non torna mai al browser: vuoto = resta quello di prima
   for (const slot of ['principale', 'riserva']) {
     const n = nuove?.cervello?.[slot];
     if (n && !n.chiave) {
@@ -128,10 +138,12 @@ export function salvaImpostazioni(nuove) {
   const tutte = unisci(PREDEFINITE, unisci(attuali, nuove));
   if (Array.isArray(nuove?.calendari)) tutte.calendari = nuove.calendari; // l'elenco arriva sempre intero
   for (const g of GIORNI) tutte.orari[g] = String(tutte.orari[g] || '').trim();
+  delete tutte.receptionist.personaggio;
   delete tutte.twilio.segretoImpostato;
+  delete tutte.twilio.authTokenImpostato;
   for (const slot of ['principale', 'riserva']) delete tutte.cervello[slot].chiaveImpostata;
   writeFileSync(FILE, JSON.stringify(tutte, null, 2), { mode: 0o600 }); // contiene chiavi e password: solo per te
-  try { chmodSync(FILE, 0o600); } catch {}
+  proteggi(FILE);
   cache = tutte;
   for (const f of ascoltatori) try { f(tutte); } catch {}
   return tutte;
@@ -144,6 +156,8 @@ export function impostazioniPubbliche() {
   i.email.password = '';
   i.twilio.segretoImpostato = Boolean(i.twilio.apiSecret || process.env.TWILIO_API_SECRET);
   i.twilio.apiSecret = '';
+  i.twilio.authTokenImpostato = Boolean(i.twilio.authToken || process.env.TWILIO_AUTH_TOKEN);
+  i.twilio.authToken = '';
   for (const slot of ['principale', 'riserva']) { i.cervello[slot].chiaveImpostata = Boolean(i.cervello[slot].chiave); i.cervello[slot].chiave = ''; }
   for (const c of i.calendari || []) { c.passwordImpostata = Boolean(c.password); c.password = ''; }
   return i;

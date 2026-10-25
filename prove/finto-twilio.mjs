@@ -3,7 +3,7 @@
 // come farebbe il telefono, misura il ritardo di ogni risposta e salva la registrazione.
 //
 // Uso: node prove/finto-twilio.mjs <url> [etichetta] [copione: base | scorbutico | disordine]
-//   <url> = il websocket (ws://127.0.0.1:5050/media/1/prova) oppure il webhook Twilio
+//   <url> = il websocket (ws://127.0.0.1:5050/media/tel/prova) oppure il webhook Twilio
 //   (http://127.0.0.1:5050/twilio/locale/voce?v=1): in quel caso prima fa la richiesta
 //   che farebbe Twilio, come in una chiamata vera, e poi si collega allo stream indicato.
 import WebSocket from 'ws';
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { COPIONI } from './copione.mjs';
 
 const qui = dirname(fileURLToPath(import.meta.url));
-let url = process.argv[2] || 'ws://127.0.0.1:5050/media/1/prova';
+let url = process.argv[2] || 'ws://127.0.0.1:5050/media/tel/prova';
 const etichetta = process.argv[3] || 'prova';
 const nomeCopione = process.argv[4] || 'base';
 const COPIONE = COPIONI[nomeCopione];

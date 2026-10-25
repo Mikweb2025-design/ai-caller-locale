@@ -14,6 +14,8 @@ export const SERVIZI = {
   altro: { nome: 'Altro CalDAV', url: 'https://', aiuto: "L'indirizzo CalDAV del tuo servizio (anche quello di un singolo calendario)." },
 };
 
+import { recupera } from './rete.mjs';
+
 const UID_NOSTRO = '@ai-caller-locale';
 
 function intestazioni(conto, extra = {}) {
@@ -21,16 +23,16 @@ function intestazioni(conto, extra = {}) {
 }
 
 async function richiesta(conto, metodo, url, { corpo, profondita, tipo = 'application/xml; charset=utf-8', extra = {} } = {}) {
-  const r = await fetch(url, {
+  // reti private ok (Nextcloud in casa), ma solo http/https e mai il server stesso
+  const r = await recupera(url, {
     method: metodo,
     headers: intestazioni(conto, { ...(corpo ? { 'Content-Type': tipo } : {}), ...(profondita !== undefined ? { Depth: String(profondita) } : {}), ...extra }),
     body: corpo,
-    redirect: 'follow',
     signal: AbortSignal.timeout(15000),
-  });
+  }, { privati: true });
   if (r.status === 401) throw new Error('accesso negato: controlla utente e password per le app');
   if (!r.ok && r.status !== 207) throw new Error(`${metodo} ${new URL(url).pathname} → HTTP ${r.status}`);
-  return { stato: r.status, testo: await r.text(), etag: r.headers.get('etag'), url: r.url };
+  return { stato: r.status, testo: await r.text(), etag: r.headers.get('etag'), url: r.urlFinale };
 }
 
 // --- XML minimo: le risposte multistatus, senza dipendere dai prefissi dei namespace ---

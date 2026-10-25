@@ -1,10 +1,12 @@
 // Pannello di controllo: una pagina sola, da aprire sul telefono prima di girare il video.
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
+import { impostazioni } from './impostazioni.mjs';
+
 export function paginaPannello({ messaggio = '', twilio, numero, web }) {
   return `<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Centralino officina</title>
+<title>Centralino ${esc(impostazioni().attivita.nome)}</title>
 <style>
   :root { --sfondo:#f6f5f2; --testo:#1d1d1b; --tenue:#6b6a66; --oro:#c9a227; --bordo:#dedbd3; --carta:#fff; }
   @media (prefers-color-scheme: dark) { :root { --sfondo:#141413; --testo:#f1efe9; --tenue:#a19f98; --bordo:#33322f; --carta:#1e1e1c; } }
@@ -27,8 +29,8 @@ export function paginaPannello({ messaggio = '', twilio, numero, web }) {
   h2 { font-size:17px; margin:28px 0 10px; }
 </style></head>
 <body><main>
-  <h1>Centralino Officina Marchetti</h1>
-  <p class="tenue">Receptionist AI tutto locale: faster-whisper, Claude Code, Qwen3-TTS.</p>
+  <h1>Centralino ${esc(impostazioni().attivita.nome)}</h1>
+  <p class="tenue">Receptionist AI telefonico.</p>
   ${messaggio ? `<div class="msg">${esc(messaggio)}</div>` : ''}
   <div>Numero da chiamare:</div>
   <div class="numero">${esc(numero || 'numero non impostato')}</div>

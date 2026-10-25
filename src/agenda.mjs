@@ -5,7 +5,8 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import nodemailer from 'nodemailer';
-import { impostazioni, fasce, GIORNI, CARTELLA_DATI } from './impostazioni.mjs';
+import { impostazioni, fasce, GIORNI, CARTELLA_DATI, proteggi } from './impostazioni.mjs';
+import { recupera } from './rete.mjs';
 import { leggiEventi, salvaEvento, cancellaEvento, eventoNostro } from './caldav.mjs';
 
 const FILE = join(CARTELLA_DATI, 'appuntamenti.json');
@@ -40,7 +41,8 @@ export function appuntamenti() {
   if (!existsSync(FILE)) return [];
   try { return JSON.parse(readFileSync(FILE, 'utf8')); } catch { return []; }
 }
-const salva = (lista) => writeFileSync(FILE, JSON.stringify(lista, null, 2));
+const salva = (lista) => { writeFileSync(FILE, JSON.stringify(lista, null, 2), { mode: 0o600 }); proteggi(FILE); };
+proteggi(FILE); // anche se esiste già con permessi larghi
 
 export async function annulla(id) {
   const lista = appuntamenti();
@@ -134,7 +136,7 @@ export async function leggiCalendari(testo) {
   const eventi = [], errori = [];
   for (const u of urls) {
     try {
-      const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
+      const r = await recupera(u, { signal: AbortSignal.timeout(8000) }, { privati: true });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const t = await r.text();
       if (!t.includes('BEGIN:VCALENDAR')) throw new Error('non è un calendario iCal');

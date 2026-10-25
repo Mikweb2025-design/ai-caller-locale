@@ -11,7 +11,7 @@ const numero = (v, d) => (v === undefined || v === '' ? d : Number(v));
 export const CONFIG = {
   porta: numero(process.env.PORTA, 5050),
 
-  // Il motore vocale locale (motore/motore.py): faster-whisper + Qwen3-TTS
+  // Il motore vocale locale (motore/motore.py): Parakeet (ascolto) + Qwen3-TTS (voce)
   motore: (process.env.MOTORE_URL || `http://127.0.0.1:${process.env.MOTORE_PORTA || 5051}`).replace(/\/$/, ''),
 
   // Il cervello: Claude Code (comando `claude`), con il tuo abbonamento

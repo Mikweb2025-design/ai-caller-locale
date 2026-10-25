@@ -9,7 +9,7 @@ Italian version: [README.it.md](README.it.md) · Technical guide (Italian): [GUI
 ## Contents
 
 1. [What it is and what it does](#what-it-is-and-what-it-does)
-2. [Why local and open source](#why-local-and-open-source)
+2. [Why local](#why-local)
 3. [Architecture](#architecture)
 4. [Requirements](#requirements)
 5. [Quick start](#quick-start)
@@ -44,7 +44,7 @@ What it does:
 - **Is honest about being an AI.** If asked, it says yes and offers a call back from a person.
 - **Closes the call by itself**, repeating day and time. Optionally sends a confirmation email and an SMS.
 
-## Why local and open source
+## Why local
 
 - **No per-minute cloud voice bill.** Listening and speaking run on the Mac with open models (Parakeet v3, Qwen3-TTS on MLX). The only part that can leave the machine is the text of the conversation, sent to the brain you choose.
 - **Audio never leaves the Mac.** With Claude Code or a paid API, only transcribed text goes out. With a free tier of some services, customer names and phone numbers pass through that service, which matters under GDPR (see [Security and privacy](#security-and-privacy)).
@@ -93,6 +93,7 @@ Key points:
 | Node.js | 20.12 or newer |
 | Python | 3.11 or newer, with `pip install -r motore/requirements.txt` (`mlx-audio`, `faster-whisper`, `numpy`, `scipy`, `soundfile`). The first start downloads the models from Hugging Face (about 1.5 GB). |
 | Brain | [Claude Code](https://claude.com/claude-code) installed and logged in (`claude` works in the terminal), **or** an API key for another service, see below |
+| ffmpeg | On the PATH, **only for the no-phone tests** (`prove/genera-cliente.mjs` and `prove/finto-twilio.mjs`); not needed to run the receptionist |
 | Optional | A Twilio account and a public HTTPS address (a Cloudflare Tunnel is fine), only if you want a real phone number |
 
 ## Quick start
@@ -108,6 +109,7 @@ npm start                   # terminal 2: the server
 
 - Open **http://localhost:5050**, press the call button and talk (headphones recommended, otherwise the speaker echo can interrupt the receptionist), or type in the chat.
 - The settings are at **http://localhost:5050/admin**.
+- **Without `SEGRETO` the server is for this computer only.** It listens on `127.0.0.1` (`HOST`) and answers 403 to any request with a `Host` name other than `localhost`, `127.0.0.1` or `[::1]`, or with proxy or tunnel headers (`X-Forwarded-For`, `CF-Connecting-IP`...). To use it from the internet you need a long random `SEGRETO` and an https proxy in front (see [Security and privacy](#security-and-privacy)).
 
 ![A test call from the browser, with the chat](docs/screenshot/chiamata-browser.png)
 
@@ -123,17 +125,27 @@ The main `.env` options:
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORTA` | `5050` | Server port |
-| `SEGRETO` | empty | Empty = local only. For a public server set a long random string (see [Security](#security-and-privacy)) |
+| `HOST` | `127.0.0.1` | Address the server listens on. `0.0.0.0` opens it to the network: only behind an https proxy and with `SEGRETO` |
+| `SEGRETO` | empty | Empty = localhost only (refuses non-local `Host` and proxies/tunnels). For the internet it is **mandatory**: a long random string (see [Security](#security-and-privacy)) |
 | `URL_PUBBLICO` | empty | Public HTTPS address, only for Twilio |
+| `DATI_DIR` | `./dati` | Folder for settings and appointments; for separate test instances |
+| `MOTORE_PORTA` / `MOTORE_URL` | `5051` / `http://127.0.0.1:<MOTORE_PORTA>` | Voice engine port, and the address the server uses to reach it |
 | `CLAUDE_MODELLO` | `haiku` | Claude model (`haiku` is the most responsive on the phone) |
 | `CLAUDE_IMPEGNO` | `low` | `--effort` level; `low` gives the fastest first text |
 | `STT_MODELLO` | `mlx-community/parakeet-tdt-0.6b-v3` | Or a faster-whisper model (`small`, `large-v3-turbo`, ...) |
 | `TTS_TEMPERATURA` | `0.6` in the code | Lower = flatter and steadier voice, higher = more expressive and less predictable |
 | `VAD_SOGLIA` | `700` | Energy above which it is voice (raise it with background noise) |
 | `VAD_SILENZIO_MS` | `750` | Silence after which the caller has finished |
+| `VAD_INIZIO_MS` / `VAD_MINIMO_MS` | `120` / `250` | Continuous voice needed to say "they are speaking" / sentences shorter than this are noise |
+| `VAD_INTERRUZIONE_MS` | `500` | Continuous voice needed to interrupt the receptionist while it speaks |
+| `RIEMPITIVO_S` | `-1` | If Claude is slow by this many seconds, it says "Sì, un attimo." (`-1` = never) |
+| `TTS_ISTRUZIONI` | empty | Style instructions, only for CustomVoice models (no voice sample) |
+| `TWILIO_AUTH_TOKEN` | empty | The account's primary Auth Token: verifies the signature of incoming Twilio calls (see [Twilio](#twilio-a-real-phone-number)) |
+| `TWILIO_API_BASE` | `https://api.twilio.com` | **Tests only**: a fake Twilio instead of the real API (`prove/finto-twilio-api.mjs`) |
+| `ALLOW_PRIVATE_FETCH` | empty | `1` = website import may read private or local addresses (see [Import from your website](#import-from-your-website)) |
 | `NOME_RECEPTIONIST` / `GENERE_RECEPTIONIST` | `Luca` / `m` | Starting values; also editable in the panel |
 
-Almost everything about the business is edited in the admin panel and saved in `dati/impostazioni.json`.
+More variables (`TWILIO_NUMERO`, `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY`, `TWILIO_API_SECRET`, `STT_MODELLO`, `TTS_MODELLO`, `TTS_VOCE`, `SPEGNI_SERVIZI`, `CON_SMS`...) and the defaults read from the code are in the [technical guide](GUIDA-TECNICA.md#variabili-del-env) (Italian); `.env.example` lists them with a comment. Almost everything about the business is edited in the admin panel and saved in `dati/impostazioni.json`.
 
 > `motore.py` also stops the launchd services listed in `SPEGNI_SERVIZI` while it runs and restarts them when it exits (the default list is two other Qwen3-TTS servers on the author's Mac). If you have none, nothing happens; set `SPEGNI_SERVIZI=` to be sure it never touches anything.
 
@@ -240,27 +252,30 @@ For a real number you need a Twilio account that is **not** a trial one (a trial
 
 1. Put `SEGRETO` (a long random string) in `.env` and restart: the panel becomes `/admin/<SEGRETO>`.
 2. Enter the public address of the server.
-3. Enter the Account SID and an API Key (SK… plus secret) or the Auth Token, then press **Verifica credenziali**: it shows the account name, whether it is a trial account, and the numbers you own.
+3. Enter the Account SID and an API Key (SK… plus secret) or the Auth Token, then press **Verifica credenziali**: it shows the account name, whether it is a trial account, and the numbers you own. Also fill in **Auth Token dell'account** (see below): you need the account's **primary** Auth Token even if you use an API Key for the API calls.
 4. Choose the number and press **Collega il numero automaticamente**: the server sets "A call comes in" on Twilio to the webhook `https://…/twilio/<SEGRETO>/voce` (HTTP POST). Or copy the address and paste it by hand.
 5. **Chiamami ora** (call me now) makes the receptionist call your mobile and speak first.
 
-Credentials are stored in `dati/impostazioni.json`; the secret is never sent back to the browser. `TWILIO_*` and `URL_PUBBLICO` in `.env` are only starting values.
+Credentials are stored in `dati/impostazioni.json`; the secret and the Auth Token are never sent back to the browser. `TWILIO_*` and `URL_PUBBLICO` in `.env` are only starting values.
+
+**Call signature (`X-Twilio-Signature`).** With the Auth Token set (the panel field or `TWILIO_AUTH_TOKEN`; if your credentials are Account SID plus Auth Token, that one already counts) the webhook only accepts requests signed by Twilio and answers 403 to the rest. Twilio always signs with the primary Auth Token, never with an API Key secret. The signature is computed on the public address, so **if the Auth Token is set but the public address is missing, requests are rejected**. **Without an Auth Token** the request goes through (knowing the address with the secret is enough) and the Phone tab warns you.
 
 ## Import from your website
 
 In the **Attività** tab, type the address of the business website and press **Importa dal sito**.
 
 - It reads **up to 30 pages of the same domain**: first the home page and pages with names like contacts, services, prices, FAQ, about, and the pages listed in `sitemap.xml`. Menus and footers repeated on every page are removed.
-- The text is sent to Claude (Sonnet when the brain is Claude Code; otherwise the model you configured), which returns the business fields and a complete **phone sheet** (services, materials and technical limits, contacts, FAQ), using only what is on the site. Prices are included only if the site states them.
+- The text is sent to Claude (Sonnet when the brain is Claude Code; otherwise the model you configured), which returns the business fields, the **greeting** and a complete **phone sheet** (services, materials and technical limits, contacts, FAQ), using only what is on the site. Prices are included only if the site states them. If the main brain fails, the request goes to the fallback brain (if you set one).
 - Opening hours are filled in **only if the site really gives them**. The panel also tells you what it did not find.
 - Nothing is saved until you check the fields and press **Salva**.
+- **Anti-SSRF check:** before reading, every address (and every redirect hop, at most 5) is checked: only `http` and `https`, the host name is resolved (all DNS answers) and if it points to a private, local or link-local network (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, `::1`, `fc00::/7`, `fe80::/10`) the import stops with a clear error. So the button cannot be used to make the server read pages of your internal network or cloud metadata services. With `ALLOW_PRIVATE_FETCH=1` in `.env` the private-network block is lifted (to import from an internal site); the server itself (`localhost:PORT`) stays excluded anyway. CalDAV and iCal addresses, instead, may sit on your network (a Nextcloud at home), but go through the same checks on scheme and redirects and can never point at the server itself.
 
 The phone sheet goes into the model's instructions at every call (the first 8,000 characters), so you can edit it by hand to add what the site does not say.
 
 ## The voice
 
 - The default voice is `voci/receptionist.wav`: a Milanese man of about 35, natural and professional, with `voci/testo.txt` as its transcript. It was **designed with Qwen3-TTS VoiceDesign** (a text description of the voice, `motore/disegna-voce.py`) and is then **cloned at every sentence** by the Qwen3-TTS 0.6B Base model. The sample contains no fillers ("allora", "ehm") because the clone would tend to repeat them.
-- **Replacing it with another designed voice.** Change the description in `motore/disegna-voce.py` and run `python3 motore/disegna-voce.py 4` (four proposals). Listen to `voci/proposta-N.wav`, copy the best one (5 to 10 seconds) to `voci/receptionist.wav` and its text to `voci/testo.txt`.
+- **Replacing it with another designed voice.** Change the description in `motore/disegna-voce.py` and run `python3 motore/disegna-voce.py 4` (four proposals). Listen to `voci/proposta-N.wav` and copy the best one (5 to 10 seconds) to `voci/receptionist.wav`. **Warning:** the script **rewrites `voci/testo.txt` on every run** with its own sample text (the script's `TESTO` variable, the same for all proposals), even if `receptionist.wav` did not change. After choosing a proposal, `voci/testo.txt` must contain exactly what is said in the sample you copied: if you trimmed the audio, trim the text too; if you changed `TESTO`, the file is already right for the new proposals but not for the old `receptionist.wav` until you replace it. If you re-run the script without replacing the active sample, fix the text back (or keep a copy first).
 - **Cloning a voice of your own.** Record 5 to 15 seconds of clean speech, with no fillers, and write exactly what is said. Either replace the two files above or set `TTS_RIF_AUDIO` (a 24 kHz wav) and `TTS_RIF_TESTO` in `.env`. **Only clone a voice with the explicit consent of the person speaking**, and do not present a cloned real person as someone else to your callers.
 - Without a sample the engine uses a built-in Qwen3-TTS CustomVoice speaker (`TTS_VOCE`), which has a slight foreign accent.
 - `TTS_TEMPERATURA` controls how expressive it is.
@@ -272,7 +287,7 @@ The phone sheet goes into the model's instructions at every call (the first 8,00
 3. **Transcription.** Parakeet v3 on MLX. Transcriptions that look like silence hallucinations or English echo are dropped.
 4. **Answer, streamed.** Claude's text arrives token by token. As soon as there is a whole sentence (at least 20 characters), or a comma in a long one, it goes to Qwen3-TTS, which returns audio in chunks while it generates. Sentences are sent whole because the 0.6B model can slip on fragments of two or three words.
 5. **Interruptions.** If the caller talks over the receptionist, the server flushes the audio already queued (`clear`), stops the synthesis and ignores the rest of the answer. While the receptionist is speaking, a louder and longer voice is required to interrupt, so speaker echo or a cough does not silence it.
-6. **Markers.** The model has no tools. At the end of its answer it writes `<<CONFERMA|name|YYYY-MM-DD|HH:MM|details>>` once the caller has confirmed everything, and `<<FINE>>` after the final goodbye. The server removes them from the spoken text, books the appointment and hangs up after the last audio has played.
+6. **Markers.** The model has no tools. At the end of its answer it writes `<<CONFERMA|name|YYYY-MM-DD|HH:MM|details|email>>` once the caller has confirmed everything (the email is optional, only if the caller volunteered it), and `<<FINE>>` after the final goodbye. The server removes them from the spoken text, books the appointment and hangs up after the last audio has played.
 
 **Timings** measured on an Apple Silicon MacBook with 16 GB:
 
@@ -304,9 +319,13 @@ The instructions tell the model to listen to how the caller speaks and change th
 
 ## Security and privacy
 
-- **`SEGRETO`.** Without it the server assumes it is only used locally. For a public server set `SEGRETO` to a long random string: the panel moves to `/admin/<SEGRETO>`, the web call page to `/web/<SEGRETO>`, the feed to `/calendario/<SEGRETO>.ics` and the Twilio webhook to `/twilio/<SEGRETO>/voce`. **Do not expose the panel without a secret**: anyone who knows the address could read customer data and change settings (the Telephone tab warns you in red). The secret in the URL is the only protection; the Twilio webhook does not validate Twilio's request signature.
-- **Keys.** API keys, tokens and passwords are stored in `dati/impostazioni.json` with permissions `600` (the `dati/` folder is `700`), and are **never sent back to the browser**: leaving a password field empty keeps the saved one. `.env` and `dati/` are in `.gitignore`.
-- **Personal data on disk.** `registrazioni/` contains caller numbers and the text of calls, and `dati/appuntamenti.json` the bookings. Treat them under GDPR: decide a retention period and delete what you do not need. The audio is not kept.
+- **`SEGRETO`.** Without it the server assumes it is only used locally. For a public server set `SEGRETO` to a long random string: the panel moves to `/admin/<SEGRETO>`, the web call page to `/web/<SEGRETO>`, the feed to `/calendario/<SEGRETO>.ics` and the Twilio webhook to `/twilio/<SEGRETO>/voce`. **Do not expose the panel without a secret**: anyone who knows the address could read customer data and change settings (the Phone tab warns you in red). The secret in the URL protects the panel and the API; the Twilio webhook also has signature verification (see below).
+- **Localhost only, by default (`HOST`).** The server listens on `127.0.0.1` (`HOST`). With `HOST=0.0.0.0` it opens to the local network: only do that behind an https proxy and with `SEGRETO`.
+- **Without `SEGRETO` it refuses proxies and tunnels.** The server answers 403 (and closes WebSockets) to any request with a `Host` name other than `localhost`, `127.0.0.1` or `[::1]`, or with proxy headers (`cf-connecting-ip`, `x-forwarded-for`, `x-forwarded-host`, `x-real-ip`, `forwarded`). So a tunnel or proxy put by mistake in front of a server without a secret does not publish the panel. **For the internet:** `SEGRETO` is mandatory, plus an https proxy (or tunnel) in front, with `URL_PUBBLICO` set.
+- **Twilio signature.** With the primary Auth Token set, the webhook verifies `X-Twilio-Signature` (HMAC-SHA1 over the public address) and answers 403 if it is missing or wrong. Without an Auth Token the request goes through but the panel warns you; with the Auth Token but no public address it is rejected. See [Twilio](#twilio-a-real-phone-number).
+- **Test WebSocket:** the special `prova` token of the call WebSocket (`/media/tel/prova`, used by local tests) is only valid for a direct connection from this computer, without proxy headers and with a local `Host`, and never when both `SEGRETO` and the public address are set (exposed server). For Twilio the WebSockets use single-use tokens valid for 60 seconds.
+- **Keys.** API keys, tokens and passwords are stored in `dati/impostazioni.json` with permissions `600` (the `dati/` folder is `700`; at startup and at every save the permissions are reset to `700`/`600` even if the folder and files already existed with looser ones), and are **never sent back to the browser**: leaving a password field empty keeps the saved one. `.env` and `dati/` are in `.gitignore`.
+- **Personal data on disk.** `registrazioni/` contains caller numbers and the text of calls, and `dati/appuntamenti.json` (also `600`) the bookings. Treat them under GDPR: decide a retention period and delete what you do not need. The audio is not kept.
 - **Data leaving the Mac.** The text of the conversation goes to the brain you chose (see [warnings](#the-brain-claude-code-and-other-services)). Name, phone and email of customers are in that text.
 - **Transparency and the AI Act.** The receptionist always admits to being an AI if asked. In the European Union the AI Act requires telling the caller **at the start** that they are talking to an AI: for real use, add it to the greeting (Receptionist tab, "Saluto"), for example "...Sono Luca, l'assistente virtuale di Lasercamp, mi dica."
 - **Cloned voices.** Only with consent, see [The voice](#the-voice).
@@ -387,14 +406,17 @@ Nothing about **prices, lead times, guarantees or whether a specific job is feas
 What has been tested, honestly:
 
 - Simulated phone calls that go through the same path as Twilio (a fake Twilio client that opens the Media Streams WebSocket and plays a synthetic customer voice), and calls and chat from the browser.
+- **The Twilio link against a fake Twilio:** `prove/prova-twilio.mjs` (55 checks, with `prove/finto-twilio-api.mjs`) verifies the signature formula, the credentials, the number link, the webhook with and without a valid signature, the stream WebSocket, the outgoing call and the SMS, on a separate server instance.
+- **Tone per type of caller:** `prove/matrice-tono.mjs` runs chat calls for eleven caller types (in a hurry, rude, worried, angry...) with automatic checks on digits, symbols, repeated sentences and invented facts; judging the tone is left to the reader. `prove/chat-prova.mjs` runs a chat-only call with the sentences you give it.
+- **Security:** `prove/prova-sicurezza.mjs` checks the `prova` WebSocket token, the data permissions, old settings files and the anti-SSRF checks (the last check reads a real public website and needs network access).
 - Calendars against a **local CalDAV server (Radicale)**.
 - The OpenAI-compatible brain path against a **fake test service** that imitates the protocol.
 
 What has **not** been tested yet:
 
-- A **real Twilio number** (the webhook auto-link and the "call me now" button are written against Twilio's API but have not run against a live account).
-- A **real Nextcloud** (or iCloud, Fastmail, Synology...) server.
-- **Real free-tier services** (Groq, Gemini, OpenRouter, ...) beyond that fake test service. Their limits and behaviour may differ from what is described.
+- A **real Twilio number**: the webhook, the signature check, the automatic number link and the "call me now" button have been tested **only against a fake Twilio**, not a real one (the signature uses the formula documented by Twilio but has never been checked by a real request).
+- **No test with a real Nextcloud** (nor iCloud, Fastmail, Synology...): only the local CalDAV server.
+- **Real free-tier services** (Groq, Gemini, OpenRouter, ...), never tested beyond that fake test service. Their limits and behaviour may differ from what is described.
 
 Known limits:
 
@@ -427,11 +449,13 @@ src/
   twilio-stream.mjs  Twilio side of the call: audio, marks, hang-up
   strumenti.mjs      appointment registration and confirmation SMS
   pannello.mjs       simple "call me" page
+  config.mjs         reads .env and the starting values (port, engine, Claude, VAD)
+  rete.mjs           requests to user-chosen addresses (website, CalDAV, iCal) with anti-SSRF checks
 motore/
   motore.py          ears (Parakeet v3) and voice (Qwen3-TTS), all local
   disegna-voce.py    creates voice samples with Qwen3-TTS VoiceDesign
   requirements.txt
-prove/               simulated calls and delay measurements
+prove/               simulated calls, Twilio test with a fake Twilio, tone matrix, delay measurements
 voci/                the receptionist voice sample (receptionist.wav, testo.txt)
 demo/                two example calls (mp3)
 docs/screenshot/     the screenshots used in this README

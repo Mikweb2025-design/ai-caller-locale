@@ -6,11 +6,15 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COPIONI } from './copione.mjs';
 
+// lingua del copione → lingua del motore vocale (it|de); il resto si legge in italiano
+const LINGUE = { tedesco: 'de' };
+
 const qui = dirname(fileURLToPath(import.meta.url));
 
 for (const [nome, battute] of Object.entries(COPIONI)) {
   const cartella = join(qui, 'audio-cliente', nome);
   mkdirSync(cartella, { recursive: true });
+  const lingua = LINGUE[nome] || 'it';
   for (const [i, frase] of battute.entries()) {
     const ulaw = join(cartella, `${i + 1}.ulaw`);
     if (existsSync(ulaw)) continue;
@@ -21,7 +25,7 @@ for (const [nome, battute] of Object.entries(COPIONI)) {
       const r = await fetch('http://127.0.0.1:5051/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ testo: pezzo, voce: process.env.VOCE_CLIENTE || 'aiden' }),
+        body: JSON.stringify({ testo: pezzo, voce: process.env.VOCE_CLIENTE || 'aiden', lingua }),
       });
       if (!r.ok) throw new Error(`TTS ${r.status}: ${await r.text()}`);
       pezzi.push(Buffer.from(await r.arrayBuffer()));

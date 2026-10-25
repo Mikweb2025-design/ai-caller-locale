@@ -2,7 +2,7 @@
   "name": "ai-caller-locale",
   "version": "1.0.0",
   "private": true,
-  "description": "Receptionist AI al telefono e dal browser, tutto in locale: faster-whisper per ascoltare, Claude Code come cervello, Qwen3-TTS (MLX) per la voce.",
+  "description": "Receptionist AI locale con Parakeet, Claude Code o servizi compatibili OpenAI, Qwen3-TTS.",
   "type": "module",
   "scripts": {
     "motore": "python3 motore/motore.py",
