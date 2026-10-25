@@ -7,6 +7,10 @@ import { postiPerIstruzioni } from './agenda.mjs';
 import { confermaAppuntamento, registraRichiamo } from './strumenti.mjs';
 import { aggiornaRichiamo } from './agenda.mjs';
 import { Cervello } from './cervello.mjs';
+import { consensoPrenotazione, congedoCliente } from './consenso.mjs';
+import { numeriInParole, punteggiaturaDaVoce } from './parlato.mjs';
+import { creaRegolatoreIntercalari } from './intercalari.mjs';
+import { impostazioni } from './impostazioni.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta } from './voce.mjs';
 
 const FRAME_MS = 20;
@@ -15,7 +19,7 @@ export const RIEMPITIVO = 'Sì, un attimo.';
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
 function separa(testo) {
   const azioni = [...testo.matchAll(/<<\s*(CONFERMA|RICHIAMA|FINE)\s*(?:\|([^>]*))?>>/g)].map(([, tipo, a]) => ({ tipo, argomenti: (a || '').split('|').map((x) => x.trim()) }));
-  const parlato = testo.replace(/<<[^>]*(?:>>|$)/g, '').replace(/\[[^\]]*\]/g, '').replace(/[*_#`]/g, '');
+  const parlato = punteggiaturaDaVoce(numeriInParole(testo.replace(/<<[^>]*(?:>>|$)/g, '').replace(/\[[^\]]*\]/g, '').replace(/[*_#`]/g, '')));
   return { azioni, parlato };
 }
 
@@ -77,6 +81,7 @@ export function gestisciChiamata(chiamata) {
   let frase = [];
   let turno = 0; // turno di risposta che vogliamo sentire
   let bufferTesto = '';
+  let testoTurno = '';
   let giaDetto = false; // il primo pezzo della risposta è già partito
   let coda = Promise.resolve(); // frasi da leggere, in ordine
   let annulla = new AbortController();
@@ -85,6 +90,10 @@ export function gestisciChiamata(chiamata) {
   let riempitivo = null;
   let chiudere = false;
   let richiamoId = null; // il primo RICHIAMA della chiamata: gli altri lo aggiornano invece di duplicarlo
+  let confermato = false; // un solo appuntamento per chiamata: i CONFERMA ripetuti si ignorano
+  let ultimoCliente = ''; // l'ultima frase del cliente, per capire se ha davvero salutato
+  let ultimoReceptionist = '';
+  const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
   const ritardi = [];
 
   const testo = (chi, t) => chiamata.testo?.(chi, t);
@@ -94,6 +103,7 @@ export function gestisciChiamata(chiamata) {
     annulla = new AbortController();
     coda = Promise.resolve();
     bufferTesto = '';
+    testoTurno = '';
     giaDetto = false;
     clearTimeout(riempitivo);
     if (chiamata.sta_parlando) { chiamata.svuota(); chiamata.log(`✂ ${motivo}`); }
@@ -134,7 +144,8 @@ export function gestisciChiamata(chiamata) {
     }
     chiamata.log(`👤 ${detto} (ascolto ${t.ms} ms${t.voce_occupata ? ", voce occupata" : ""})`);
     testo('cliente', detto);
-    await cervelloPronto;
+    ultimoCliente = detto;
+    await attendiCervello();
     nuovoTurno(detto);
   }
 
@@ -152,6 +163,12 @@ export function gestisciChiamata(chiamata) {
   }
 
   function collegaCervello() {
+    const emetti = (grezzo, n) => {
+      const parlato = regolaIntercalare(grezzo, n).trim();
+      if (!parlato) return;
+      testoTurno += `${testoTurno ? ' ' : ''}${parlato}`;
+      leggi(parlato);
+    };
     cervello.alTesto = (pezzo, n) => {
       if (n !== turno) return; // risposta a una frase ormai superata
       if (!bufferTesto && !giaDetto && fineTurno) chiamata.log(`🧠 primo testo di Claude dopo ${Date.now() - fineTurno} ms`);
@@ -161,22 +178,35 @@ export function gestisciChiamata(chiamata) {
         giaDetto = true;
         const { parlato } = separa(bufferTesto.slice(0, i));
         bufferTesto = bufferTesto.slice(i).trimStart();
-        if (parlato.trim()) leggi(parlato.trim());
+        emetti(parlato, n);
       }
     };
     cervello.allaFine = async (completo, n) => {
       if (n !== turno) return;
       const { parlato } = separa(bufferTesto);
       bufferTesto = '';
-      if (parlato.trim()) leggi(parlato.trim());
-      const { azioni, parlato: tutto } = separa(completo);
+      emetti(parlato, n);
+      const { azioni } = separa(completo);
+      const tutto = testoTurno.trim();
+      const precedente = ultimoReceptionist;
+      ultimoReceptionist = tutto.trim();
       chiamata.log(`🤖 ${tutto.trim()}`);
       testo('receptionist', tutto.trim());
       for (const a of azioni) {
         chiamata.log(`🔧 ${a.tipo}`, a.argomenti);
         if (a.tipo === 'CONFERMA') {
           const [nome, giorno, ora, dettagli, email] = a.argomenti;
-          await confermaAppuntamento({ nome, giorno, ora, dettagli, email }, chiamata);
+          if (confermato) {
+            chiamata.log('⚠️ CONFERMA ignorata: l’appuntamento di questa chiamata è già stato registrato');
+          } else if (!consensoPrenotazione(ultimoCliente, precedente, nome)) {
+            chiamata.log('⚠️ CONFERMA ignorata: manca il consenso al riepilogo precedente');
+          } else if (!nome || !giorno || !ora || !dettagli || !/^\d{4}-\d{2}-\d{2}$/.test(giorno) || !/^\d{1,2}:\d{2}$/.test(ora)) {
+            chiamata.log('⚠️ CONFERMA ignorata: mancano nome, giorno, ora o dettagli');
+          } else {
+            confermato = true;
+            const esito = await confermaAppuntamento({ nome, giorno, ora, dettagli, email }, chiamata);
+            if (!esito.ok) confermato = false;
+          }
         }
         if (a.tipo === 'RICHIAMA') {
           const [nome, ...motivo] = a.argomenti;
@@ -189,14 +219,29 @@ export function gestisciChiamata(chiamata) {
           }
         }
         if (a.tipo === 'FINE' && !chiudere) {
-          chiudere = true;
-          await coda;
-          await chiamata.finitoDiParlare();
-          await new Promise((r) => setTimeout(r, 600));
-          chiamata.riaggancia();
+          // Il modello a volte scrive <<FINE>> troppo presto: si riaggancia solo se il cliente ha salutato.
+          const saluta = congedoCliente(ultimoCliente, turno);
+          if (!saluta) {
+            chiamata.log('⚠️ FINE ignorato: il cliente non ha ancora salutato');
+          } else {
+            chiudere = true;
+            await coda;
+            await chiamata.finitoDiParlare();
+            await new Promise((r) => setTimeout(r, 600));
+            chiamata.riaggancia();
+          }
         }
       }
     };
+  }
+
+  async function attendiCervello() {
+    const pronto = await cervelloPronto;
+    if (!cervello) {
+      cervello = pronto;
+      collegaCervello();
+    }
+    return cervello;
   }
 
   chiamata.alPartire = async () => {
@@ -211,17 +256,17 @@ export function gestisciChiamata(chiamata) {
     const audio = Buffer.concat(await Promise.all(salutoSegmenti().map((x) => frasePronta(x.testo, x.lingua))));
     chiamata.log(`⏱ saluto pronto in ${Date.now() - t} ms`);
     inviaAudio(audio);
-    cervello = await pronto;
-    collegaCervello();
+    await attendiCervello();
     if (chiamata.chiusa) cervello.chiudi();
   };
 
   // Frase scritta (chat dal browser): come se l'avesse detta.
   chiamata.alTestoScritto = async (t) => {
     if (!cervelloPronto || !t.trim()) return;
-    await cervelloPronto;
+    await attendiCervello();
     chiamata.log(`⌨️ ${t}`);
     testo('cliente', t.trim());
+    ultimoCliente = t.trim();
     fineTurno = Date.now();
     nuovoTurno(t.trim());
   };

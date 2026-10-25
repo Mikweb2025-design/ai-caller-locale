@@ -37,14 +37,21 @@ DESCRIZIONI = {
         "A 24-year-old Italian woman from Milan, young and energetic, warmly joking on the phone with a friendly customer. Completely native Italian with authentic young Milanese intonation. Lively and bright but polite, expressive Italian melody with natural ups and downs. Sounds like a real young Italian talking to someone she likes, not a synthesizer: no monotone, no robotic pauses, no English accent.",
         "A 32-year-old Italian woman, warm and a little playful, from northern Italy, chatting amiably with a customer she likes on the phone. Fully native Italian, natural accent, soft warm voice with a fine smile in the tone. Italian conversational melody, expressive emphasis, human rhythm with natural breathing. Professional but with charm, never cold, never robotic, never flat, never reading, no English pronunciation.",
     ],
+    'maria-naturale': (
+        "A 32-year-old Italian receptionist from Milan speaking calmly with one customer on the phone. "
+        "Fully native Italian, a soft medium-low voice and a light northern Italian accent. Restrained, everyday "
+        "conversational delivery: relaxed pace, subtle smile, modest pitch variation and small natural breaths. "
+        "She follows commas, full stops and questions with realistic pauses, without overacting. No advertising tone, "
+        "no sing-song melody, no theatrical emotion, no exaggerated smile, no newsreader style, no robotic cadence."
+    ),
 }
 des = DESCRIZIONI.get(TIPO)
 DESCRIZIONE = des[0] if isinstance(des, list) else des
 PREFISSO = 'proposta' if TIPO == 'maschile' else ('voce-f' if isinstance(des, list) else f'proposta-{TIPO}')
-# Testo del campione: frasi normali, senza intercalari ("allora", "ehm"), che il clone tende poi a ripetere.
-TESTO = ("Buongiorno, la sento benissimo. Per il tagliando posso proporle giovedì mattina alle nove, oppure venerdì "
-         "pomeriggio verso le due. Come la va? Bene. Mi lasci il suo nome e il modello della macchina: se lo segno "
-         "subito, e poi le mando la conferma. La saluto e a presto.")
+# Un riferimento breve e coerente clona meglio ritmo e timbro. Evitiamo intercalari e frasi isolate
+# come "Bene.", che il modello tenderebbe a ripetere nelle telefonate.
+TESTO = ("Buongiorno, mi dica pure. Sì, ho capito. Per martedì c'è un posto alle nove; "
+         "in alternativa, mercoledì alle due del pomeriggio. Quale preferisce?")
 
 m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit")
 (RADICE / 'voci').mkdir(exist_ok=True)
@@ -75,7 +82,8 @@ for i in range(1, n + 1):
     f = RADICE / 'voci' / f'{PREFISSO}-{i}.wav'
     migliore = None
     for rip in range(RIPRESE):
-        a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=d, lang_code='italian', temperature=0.9)])
+        temperatura = float(os.environ.get('DESIGN_TEMPERATURA', '0.72'))
+        a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=d, lang_code='italian', temperature=temperatura)])
         scarto, mediana = vivacita(a, m.sample_rate)
         if migliore is None or scarto > migliore[1]:
             migliore = (a, scarto, mediana, rip)

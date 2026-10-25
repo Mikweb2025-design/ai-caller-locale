@@ -22,7 +22,7 @@ import { recupera, controllaUrl } from './rete.mjs';
 import { SERVIZI_CERVELLO, elencaModelli, provaConversazione } from './cervello.mjs';
 import { istruzioni } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
-import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
+import { CARTELLA_DATI, proteggi, impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
 import { appuntamenti, annulla, sposta, richiamoFatto, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma, sincronizzaManca, chiediConferma, chiediConfermaProssimi, rispondiConferma } from './agenda.mjs';
 
 const segreto = SEGRETO;
@@ -39,6 +39,11 @@ const xml = (s) => String(s ?? '').replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>
 
 // Le voci del receptionist: i campioni .wav della cartella voci/ (quello attivo lo sceglie il pannello)
 const CARTELLA_VOCI = join(RADICE, 'voci');
+const AVATAR_PREDEFINITO = join(RADICE, 'assets', 'maria-avatar.png');
+const avatarCaricato = () => {
+  const nome = String(impostazioni().receptionist?.avatar || '');
+  return /^avatar-receptionist\.(?:jpg|png|webp)$/.test(nome) && existsSync(join(CARTELLA_DATI, nome)) ? join(CARTELLA_DATI, nome) : '';
+};
 
 // PCM 16 bit mono 24 kHz → file WAV con l'intestazione standard da 44 byte
 function wav24k(pcm) {
@@ -61,7 +66,12 @@ const MESSAGGIO_SEGRETO = 'Questo server non ha un SEGRETO e risponde solo a loc
 
 async function leggiCorpo(req) {
   let s = '';
-  for await (const c of req) s += c;
+  let byte = 0;
+  for await (const c of req) {
+    byte += c.length;
+    if (byte > 8 * 1024 * 1024) { const e = new Error('richiesta troppo grande'); e.codiceHttp = 413; throw e; }
+    s += c;
+  }
   return s;
 }
 
@@ -104,13 +114,22 @@ const server = http.createServer(async (req, res) => {
 
     // Chiamata dal browser: microfono, altoparlante e chat
     if (req.method === 'GET' && (url.pathname === `/web/${segreto}` || (url.pathname === '/' && segreto === 'locale'))) {
-      return html(paginaWeb({ ws: `/media/web/${segreto}`, admin: segreto === 'locale' ? '/admin' : `/admin/${segreto}` }));
+      return html(paginaWeb({ ws: `/media/web/${segreto}`, admin: segreto === 'locale' ? '/admin' : `/admin/${segreto}`, avatar: `/avatar/${segreto}` }));
     }
 
     // Pannello admin: impostazioni, calendari, email, appuntamenti
     if (req.method === 'GET' && (url.pathname === `/admin/${segreto}` || (url.pathname === '/admin' && segreto === 'locale'))) {
       const base = urlPubblico() || `http://${req.headers.host}`;
-      return html(paginaAdmin({ api: `/api/${segreto}`, web: segreto === 'locale' ? '/' : `/web/${segreto}`, feed: `${base}/calendario/${segreto}.ics` }));
+      return html(paginaAdmin({ api: `/api/${segreto}`, web: segreto === 'locale' ? '/' : `/web/${segreto}`, feed: `${base}/calendario/${segreto}.ics`, avatar: `/avatar/${segreto}` }));
+    }
+    // Foto del receptionist: quella caricata dal pannello, oppure Maria inclusa nell'app.
+    if (req.method === 'GET' && url.pathname === `/avatar/${segreto}`) {
+      const f = avatarCaricato() || AVATAR_PREDEFINITO;
+      if (!existsSync(f)) return json(404, { errore: 'avatar non trovato' });
+      const dati = readFileSync(f);
+      const tipo = f.endsWith('.jpg') ? 'image/jpeg' : f.endsWith('.webp') ? 'image/webp' : 'image/png';
+      res.writeHead(200, { 'Content-Type': tipo, 'Content-Length': dati.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(dati);
     }
     // Conferma dell'appuntamento dal cliente: il link che arriva per email (id + token, nessun segreto del pannello)
     const conferma = url.pathname.match(/^\/conferma\/([a-f0-9]+)\/([a-f0-9]+)(?:\/(si|no))?$/);
@@ -135,6 +154,35 @@ const server = http.createServer(async (req, res) => {
         await impegniEsterni({ forza: true }).catch(() => {});
         sincronizzaManca().catch((e) => console.warn('⚠️ risincronizzazione calendario:', e.message));
         return json(200, impostazioniPubbliche());
+      }
+      if (percorso === '/receptionist/avatar' && req.method === 'POST') {
+        const vecchio = String(impostazioni().receptionist?.avatar || '');
+        const eliminaVecchio = () => {
+          if (!/^avatar-receptionist\.(?:jpg|png|webp)$/.test(vecchio)) return;
+          const f = join(CARTELLA_DATI, vecchio);
+          if (existsSync(f)) unlinkSync(f);
+        };
+        if (corpo.rimuovi) {
+          eliminaVecchio();
+          salvaImpostazioni({ receptionist: { avatar: '' } });
+          return json(200, { ok: true, avatar: `/avatar/${segreto}` });
+        }
+        const m = String(corpo.immagine || '').match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=\s]+)$/);
+        if (!m) return json(400, { errore: 'formato non valido: usa JPG, PNG o WebP' });
+        const dati = Buffer.from(m[2].replace(/\s/g, ''), 'base64');
+        if (!dati.length || dati.length > 3 * 1024 * 1024) return json(400, { errore: 'la foto deve pesare al massimo 3 MB' });
+        const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+        const firmaOk = ext === 'jpg' ? dati[0] === 0xff && dati[1] === 0xd8 && dati[2] === 0xff
+          : ext === 'png' ? dati.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+            : dati.subarray(0, 4).toString() === 'RIFF' && dati.subarray(8, 12).toString() === 'WEBP';
+        if (!firmaOk) return json(400, { errore: 'il file non contiene una foto valida' });
+        const nome = `avatar-receptionist.${ext}`;
+        const f = join(CARTELLA_DATI, nome);
+        writeFileSync(f, dati, { mode: 0o600 });
+        proteggi(f);
+        if (vecchio && vecchio !== nome) eliminaVecchio();
+        salvaImpostazioni({ receptionist: { avatar: nome } });
+        return json(200, { ok: true, avatar: `/avatar/${segreto}` });
       }
       if (percorso === '/appuntamenti') return json(200, { appuntamenti: appuntamenti() });
       // Chiedi al cliente di confermare l'appuntamento: un'email con i due link (uno solo, o a tutti i prossimi)
@@ -306,8 +354,8 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/xml' });
       return res.end('<?xml version="1.0" encoding="UTF-8"?><Response><Say language="it-IT">Ci scusi, al momento non riusciamo a rispondere. Riprovi tra poco.</Say></Response>');
     }
-    res.writeHead(500);
-    res.end();
+    res.writeHead(e.codiceHttp || 500, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ errore: e.message || 'errore interno' }));
   }
 });
 

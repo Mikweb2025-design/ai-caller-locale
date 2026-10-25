@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +21,14 @@ export const CONFIG = {
     modello: process.env.CLAUDE_MODELLO || 'haiku', // haiku = il più pronto al telefono
     // impegno "low": primo testo in ~0,65 s invece di ~1,8 s, con risposte che restano buone
     impegno: process.env.CLAUDE_IMPEGNO || 'low', // low | medium | high
+  },
+
+  // OpenCode: il server locale usato come cervello alternativo (scheda Cervello del pannello).
+  // L'indirizzo si ricava da `opencode service status`; la password dal file di servizio.
+  opencode: {
+    comando: process.env.OPENCODE_COMANDO || 'opencode',
+    agente: process.env.OPENCODE_AGENTE || 'build',
+    cartella: process.env.OPENCODE_CARTELLA || join(tmpdir(), 'ai-caller-opencode'),
   },
 
   // Quando il cliente ha finito di parlare

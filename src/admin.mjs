@@ -2,7 +2,7 @@
 // Una pagina sola che parla con le API /api/<segreto>/... del server.
 import { temaCss } from './design.mjs';
 
-export function paginaAdmin({ api, web, feed }) {
+export function paginaAdmin({ api, web, feed, avatar }) {
   return `<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Impostazioni receptionist</title>
@@ -51,6 +51,10 @@ export function paginaAdmin({ api, web, feed }) {
   .conto { border:1px solid var(--bordo); border-radius:12px; padding:14px; margin-bottom:12px; }
   .conto .riga { flex-wrap:wrap; }
   .esito { font-size:13px; color:var(--tenue); }
+  .avatar-editor { display:flex; gap:18px; align-items:center; padding:14px; margin:0 0 18px; border:1px solid var(--bordo); border-radius:14px; background:var(--sfondo); }
+  .avatar-editor img { width:92px; height:92px; flex:0 0 auto; border:3px solid color-mix(in srgb,var(--accento) 55%,var(--bordo)); border-radius:50%; object-fit:cover; object-position:center 34%; }
+  .avatar-editor .azioni { flex:1; min-width:0; }
+  @media (max-width:560px) { .avatar-editor { align-items:flex-start; } .avatar-editor img { width:76px; height:76px; } }
 </style></head>
 <body>
 <header>
@@ -96,7 +100,16 @@ export function paginaAdmin({ api, web, feed }) {
 
   <section data-scheda="Receptionist">
     <h2>Il receptionist</h2>
-    <p class="aiuto">Nome, saluto e istruzioni in più. La voce si cambia nella scheda <strong>Voce</strong>.</p>
+    <p class="aiuto">Nome, foto, saluto e istruzioni in più. La voce si cambia nella scheda <strong>Voce</strong>.</p>
+    <div class="avatar-editor">
+      <img id="avatarAnteprima" src="${avatar}" alt="Anteprima della foto del receptionist">
+      <div class="azioni">
+        <label for="avatarFile">Foto nella landing page <small>(JPG, PNG o WebP, massimo 3 MB)</small></label>
+        <input type="file" id="avatarFile" accept="image/jpeg,image/png,image/webp">
+        <div class="riga" style="margin-top:9px;flex-wrap:wrap"><button type="button" id="avatarCarica">Usa questa foto</button><button type="button" class="secondario" id="avatarRipristina">Ripristina Maria</button></div>
+        <span class="esito" id="avatarEsito"></span>
+      </div>
+    </div>
     <div class="griglia">
       <div><label>Nome</label><input data-k="receptionist.nome"></div>
       <div><label>Genere <small>(per l'italiano: pronto/pronta)</small></label><select data-k="receptionist.genere"><option value="m">uomo</option><option value="f">donna</option></select></div>
@@ -104,7 +117,7 @@ export function paginaAdmin({ api, web, feed }) {
     <h2 style="margin-top:18px">Più umano al telefono</h2>
     <p class="aiuto">I piccoli segni della persona che ascolta invece del centralino: sempre gentile e professionale, ma vivo.</p>
     <label class="check"><input type="checkbox" data-k="receptionist.scherza"> <strong>Scherza con il cliente</strong> <small>quando lui scherza o è alla leggera: una battuta ogni 2-3 risposte, mai sui suoi problemi</small></label>
-    <div style="margin-top:12px"><label>Intercalari <small>(espressioni sparse nel discorso, come "allora", "senti", "guarda": separati da virgola. Vuoto = niente intercalari, è lo stile base)</small></label><input data-k="receptionist.intercalare" placeholder="es. allora, senti, guarda"></div>
+    <div style="margin-top:12px"><label>Intercalari <small>(espressioni naturali, separate da virgola: ne usa una entro le prime tre risposte, poi non più di una ogni tre. Vuoto = nessuno)</small></label><input data-k="receptionist.intercalare" placeholder="es. allora, un attimo solo, vediamo"></div>
     <h2 style="margin-top:18px">Lingue</h2>
     <p class="aiuto">L'italiano c'è sempre. Con il tedesco il receptionist risponde nella lingua di chi chiama (italiano o Deutsch), anche dentro la stessa telefonata.</p>
     <label class="check"><input type="checkbox" data-k="lingue.tedesco"> Rispondi anche in tedesco</label>
@@ -184,7 +197,7 @@ export function paginaAdmin({ api, web, feed }) {
 
   <section data-scheda="Cervello">
     <h2>Il cervello</h2>
-    <p class="aiuto">Il servizio che capisce il cliente e scrive le risposte. Puoi usare <strong>Claude</strong> oppure un servizio gratuito (Groq, Gemini, OpenRouter, Cerebras…) incollando la sua chiave. L'account "chat" gratuito di ChatGPT o Gemini non si può collegare: serve la chiave API del servizio.</p>
+    <p class="aiuto">Il servizio che capisce il cliente e scrive le risposte. Puoi usare <strong>Claude</strong>, <strong>OpenCode</strong> (il server già aperto sul computer, con i modelli che ha collegato) oppure un servizio gratuito (Groq, Gemini, OpenRouter, Cerebras…) incollando la sua chiave. L'account "chat" gratuito di ChatGPT o Gemini non si può collegare: serve la chiave API del servizio.</p>
     <p class="aiuto"><strong>Privacy:</strong> in ogni chiamata nomi, telefoni ed email dei clienti passano dal servizio scelto. I piani gratuiti possono usare i dati per addestrare i modelli: leggi le loro condizioni.</p>
     <div id="cervelli"></div>
   </section>
@@ -241,6 +254,7 @@ export function paginaAdmin({ api, web, feed }) {
 <div class="msg" id="msg"></div>
 <script>
 const API = ${JSON.stringify(api)};
+const AVATAR = ${JSON.stringify(avatar)};
 const $ = (s) => document.querySelector(s);
 const GIORNI = { lunedi: 'Lunedì', martedi: 'Martedì', mercoledi: 'Mercoledì', giovedi: 'Giovedì', venerdi: 'Venerdì', sabato: 'Sabato', domenica: 'Domenica' };
 let dati = null;
@@ -269,6 +283,41 @@ async function chiedi(percorso, opz = {}) {
   return j;
 }
 
+// Foto del receptionist: anteprima locale, caricamento e ritorno all'avatar di Maria incluso.
+$('#avatarFile').onchange = () => {
+  const file = $('#avatarFile').files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { $('#avatarEsito').textContent = '⚠️ la foto supera 3 MB'; return; }
+  const url = URL.createObjectURL(file);
+  $('#avatarAnteprima').src = url;
+  $('#avatarAnteprima').onload = () => URL.revokeObjectURL(url);
+  $('#avatarEsito').textContent = 'Anteprima pronta: premi “Usa questa foto”';
+};
+$('#avatarCarica').onclick = async () => {
+  const file = $('#avatarFile').files[0];
+  if (!file) return avviso('Scegli prima una foto');
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return avviso('Usa una foto JPG, PNG o WebP');
+  if (file.size > 3 * 1024 * 1024) return avviso('La foto supera 3 MB');
+  $('#avatarCarica').disabled = true; $('#avatarEsito').textContent = 'carico la foto…';
+  try {
+    const immagine = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error('non riesco a leggere la foto')); r.readAsDataURL(file); });
+    await chiedi('/receptionist/avatar', { method: 'POST', body: { immagine } });
+    $('#avatarAnteprima').src = AVATAR + '?v=' + Date.now();
+    $('#avatarEsito').textContent = '✅ foto attiva nella landing page';
+  } catch (e) { $('#avatarEsito').textContent = '⚠️ ' + e.message; }
+  $('#avatarCarica').disabled = false;
+};
+$('#avatarRipristina').onclick = async () => {
+  $('#avatarRipristina').disabled = true; $('#avatarEsito').textContent = 'ripristino…';
+  try {
+    await chiedi('/receptionist/avatar', { method: 'POST', body: { rimuovi: true } });
+    $('#avatarFile').value = '';
+    $('#avatarAnteprima').src = AVATAR + '?v=' + Date.now();
+    $('#avatarEsito').textContent = '✅ avatar di Maria ripristinato';
+  } catch (e) { $('#avatarEsito').textContent = '⚠️ ' + e.message; }
+  $('#avatarRipristina').disabled = false;
+};
+
 let servizi = {};
 let serviziCervello = {};
 const NOMI_SLOT = { principale: 'Principale', riserva: 'Riserva (facoltativa): risponde se il principale sbaglia, tarda o ha raggiunto il limite' };
@@ -293,6 +342,7 @@ function schedaCervello(slot, c = {}) {
     q('aiuto').textContent = sv ? sv.aiuto : '';
     d.querySelector('.k-urlbox').style.display = sv && sv.tipo === 'openai' ? '' : 'none';
     d.querySelector('.k-impbox').style.display = sv && sv.tipo === 'claude' ? '' : 'none';
+    q('chiave').closest('div').style.display = sv && sv.tipo === 'opencode' ? 'none' : '';
     q('chiavenome').textContent = sv && sv.tipo === 'claude' ? 'Token o chiave API (vuoto = login già fatto sul computer)' : 'Chiave';
     q('prova').style.display = sv ? '' : 'none';
     if (cambio && sv) { q('url').value = sv.url || ''; q('modello').value = sv.modello || ''; q('chiave').value = ''; q('chiave').placeholder = 'incolla la chiave'; }
