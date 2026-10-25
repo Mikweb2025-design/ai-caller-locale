@@ -13,8 +13,9 @@ import { paginaWeb } from './web.mjs';
 import { saluto } from './persona.mjs';
 import { frasePronta } from './voce.mjs';
 import { paginaAdmin } from './admin.mjs';
+import { cercaCalendari, SERVIZI } from './caldav.mjs';
 import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
-import { appuntamenti, annulla, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
+import { appuntamenti, annulla, sposta, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
 
 const segreto = process.env.SEGRETO || 'locale';
 if (CONFIG.urlPubblico && !process.env.SEGRETO) console.warn('⚠️ Manca SEGRETO nel .env: il webhook e il pannello hanno un indirizzo facile da indovinare.');
@@ -85,7 +86,25 @@ const server = http.createServer(async (req, res) => {
       }
       if (percorso === '/appuntamenti') return json(200, { appuntamenti: appuntamenti() });
       const m = percorso.match(/^\/appuntamenti\/([a-f0-9]+)\/annulla$/);
-      if (m && req.method === 'POST') { const a = annulla(m[1]); return a ? json(200, a) : json(404, { errore: 'appuntamento non trovato' }); }
+      if (m && req.method === 'POST') { const a = await annulla(m[1]); return a ? json(200, a) : json(404, { errore: 'appuntamento non trovato' }); }
+      const sp = percorso.match(/^\/appuntamenti\/([a-f0-9]+)\/sposta$/);
+      if (sp && req.method === 'POST') {
+        try { const a = await sposta(sp[1], corpo.giorno, corpo.ora); return a ? json(200, a) : json(404, { errore: 'appuntamento non trovato' }); } catch (e) { return json(400, { errore: e.message }); }
+      }
+      // CalDAV: servizi noti, ricerca dei calendari di un conto, prova di lettura
+      if (percorso === '/caldav/servizi') return json(200, SERVIZI);
+      if (percorso.startsWith('/caldav/') && req.method === 'POST') {
+        const conto = { ...corpo };
+        if (!conto.password) conto.password = (impostazioni().calendari || []).find((c) => c.id === conto.id)?.password || '';
+        try {
+          if (percorso === '/caldav/cerca') return json(200, { calendari: await cercaCalendari(conto) });
+          if (percorso === '/caldav/prova') {
+            const { eventi, errori } = await leggiCaldav([{ ...conto, leggi: true }]);
+            if (errori.length) throw new Error(errori[0]);
+            return json(200, { eventi: eventi.length });
+          }
+        } catch (e) { return json(400, { errore: e.message }); }
+      }
       if (percorso === '/posti') return json(200, { posti: await postiLiberi() });
       if (percorso === '/calendari/verifica' && req.method === 'POST') {
         const { eventi, errori } = await leggiCalendari(corpo.calendariOccupato);

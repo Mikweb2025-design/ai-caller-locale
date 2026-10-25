@@ -30,6 +30,7 @@ src/
   persona.mjs        chi è il receptionist, come parla, cosa sa, come va la chiamata
   impostazioni.mjs   impostazioni del pannello admin (dati/impostazioni.json)
   agenda.mjs         posti liberi, appuntamenti, calendari iCal, email di conferma
+  caldav.mjs         calendari CalDAV: ricerca, lettura, creazione, spostamento, cancellazione
   admin.mjs          pagina del pannello admin
   strumenti.mjs      registrazione dell'appuntamento, SMS, chiamate in uscita (Twilio)
   twilio-stream.mjs  lato Twilio della chiamata: audio, marche, riaggancio
@@ -57,12 +58,17 @@ prove/               chiamate simulate e misure dei ritardi
 ## Pannello admin
 
 Tutto si cambia da `/admin` (con `SEGRETO`: `/admin/<SEGRETO>`) e vale dalla chiamata successiva. I dati stanno in `dati/impostazioni.json` e `dati/appuntamenti.json`.
-- **Appuntamenti:** elenco e annullamento. "Da verificare" = il cliente ha preso un orario già occupato o fuori orario.
+- **Appuntamenti:** elenco, spostamento e annullamento (anche nei calendari collegati). "Da verificare" = il cliente ha preso un orario già occupato o fuori orario.
 - **Attività e Receptionist:** nome, indirizzo, servizi, cosa chiedere a chi prenota, saluto, istruzioni in più.
 - **Orari:** fasce per giorno, chiusure straordinarie, durata degli appuntamenti, quanti in contemporanea, preavviso, quanto avanti si prenota. Il receptionist propone solo i posti davvero liberi.
-- **Calendari:**
+- **Calendari collegati (CalDAV):** Nextcloud, iCloud, Fastmail, Synology, mailbox.org, Zoho, Yahoo, Radicale, Baïkal e ogni server CalDAV, anche più di uno insieme.
+  - Si accede con utente e **password per le app**. "Cerca calendari" trova i calendari anche partendo dal solo indirizzo del server; "Prova" legge gli impegni.
+  - **Legge** gli impegni dei prossimi giorni, compresi quelli ricorrenti (espansi dal server), e quegli orari non li propone. Si rileggono ogni 5 minuti e subito dopo ogni modifica.
+  - **Scrive** ogni appuntamento preso; quando lo **sposti** o lo **annulli** dal pannello, l'evento viene aggiornato o cancellato. Gli eventi scritti dal receptionist hanno UID `…@ai-caller-locale` e non contano come impegni.
+  - Google Calendar non accetta password per le app su CalDAV: per Google usa l'abbonamento qui sotto (per vedere gli appuntamenti) e l'indirizzo iCal segreto (per bloccare gli orari).
+- **Calendari in sola lettura:**
   - l'indirizzo `/calendario/<SEGRETO>.ics` si aggiunge come abbonamento in Google Calendar, Apple Calendario o Outlook e mostra gli appuntamenti;
-  - gli indirizzi iCal privati dei tuoi calendari bloccano gli orari in cui sei impegnato (letti ogni 5 minuti; gli eventi ricorrenti contano solo alla prima occorrenza).
+  - gli indirizzi iCal privati dei tuoi calendari bloccano gli orari in cui sei impegnato (letti ogni 5 minuti; qui gli eventi ricorrenti contano solo alla prima occorrenza).
 - **Email e SMS:** server SMTP (con Gmail: smtp.gmail.com, porta 465 sicura, password per le app). A ogni prenotazione parte un'email al titolare e, se il cliente ha lasciato l'email, la conferma a lui, tutte e due con l'evento allegato. Gli SMS passano da Twilio.
 
 ### Con il numero Twilio

@@ -53,7 +53,7 @@ Il receptionist AI risponde al primo squillo, ogni volta. Accoglie il cliente, c
 
 Su un Mac con Apple Silicon il receptionist risponde in circa 2 secondi dalla fine della frase del cliente.
 
-**Pannello admin** (`/admin`): orari di apertura e chiusure, posti liberi veri, calendario da abbonarsi in Google/Apple/Outlook, impegni dei tuoi calendari che bloccano gli orari, email di conferma, SMS ed elenco degli appuntamenti.
+**Pannello admin** (`/admin`): orari di apertura e chiusure, posti liberi veri, calendari Nextcloud, iCloud e CalDAV collegati in lettura e scrittura (crea, sposta, cancella), calendario da abbonarsi in Google/Outlook, email di conferma, SMS ed elenco degli appuntamenti.
 
 ## Per chi è
 

@@ -48,6 +48,8 @@ export const PREDEFINITE = {
     propostePerChiamata: 3, // orari da proporre al cliente
     calendariOccupato: '', // URL iCal (ICS) privati, uno per riga: i loro impegni bloccano gli orari
   },
+  // calendari CalDAV collegati: { id, servizio, nome, url, utente, password, calendario, calendarioNome, leggi, scrivi }
+  calendari: [],
   email: {
     attiva: false,
     host: '',
@@ -89,7 +91,15 @@ export function salvaImpostazioni(nuove) {
   const attuali = impostazioni();
   // la password non torna mai al browser: se arriva vuota, resta quella di prima
   if (nuove?.email && !nuove.email.password) nuove.email.password = attuali.email.password;
+  if (Array.isArray(nuove?.calendari)) {
+    for (const c of nuove.calendari) {
+      c.id ||= Math.random().toString(36).slice(2, 10);
+      if (!c.password) c.password = (attuali.calendari || []).find((x) => x.id === c.id)?.password || '';
+      delete c.passwordImpostata;
+    }
+  }
   const tutte = unisci(PREDEFINITE, unisci(attuali, nuove));
+  if (Array.isArray(nuove?.calendari)) tutte.calendari = nuove.calendari; // l'elenco arriva sempre intero
   for (const g of GIORNI) tutte.orari[g] = String(tutte.orari[g] || '').trim();
   writeFileSync(FILE, JSON.stringify(tutte, null, 2));
   cache = tutte;
@@ -102,6 +112,7 @@ export function impostazioniPubbliche() {
   const i = structuredClone(impostazioni());
   i.email.passwordImpostata = Boolean(i.email.password);
   i.email.password = '';
+  for (const c of i.calendari || []) { c.passwordImpostata = Boolean(c.password); c.password = ''; }
   return i;
 }
 

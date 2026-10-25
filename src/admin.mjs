@@ -43,6 +43,9 @@ export function paginaAdmin({ api, web, feed }) {
   code { background:var(--sfondo); padding:2px 6px; border-radius:6px; word-break:break-all; }
   .posti { display:grid; gap:6px; font-size:14px; }
   .vuoto { color:var(--tenue); font-style:italic; }
+  .conto { border:1px solid var(--bordo); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .conto .riga { flex-wrap:wrap; }
+  .esito { font-size:13px; color:var(--tenue); }
 </style></head>
 <body>
 <header>
@@ -105,11 +108,15 @@ export function paginaAdmin({ api, web, feed }) {
   </section>
 
   <section data-scheda="Calendari">
-    <h2>Vedere gli appuntamenti nel tuo calendario</h2>
+    <h2>Calendari collegati</h2>
+    <p class="aiuto">Nextcloud, iCloud, Fastmail, Synology e ogni calendario CalDAV: il receptionist legge i tuoi impegni (quegli orari non li propone), scrive gli appuntamenti che prende e li sposta o cancella quando lo fai qui. Si accede con una <strong>password per le app</strong>, non con quella principale.</p>
+    <div id="conti"></div>
+    <button class="secondario" type="button" id="aggiungiConto">+ Aggiungi calendario</button>
+    <h2 style="margin-top:26px">Vedere gli appuntamenti in Google o Outlook</h2>
     <p class="aiuto">Abbonati a questo indirizzo da Google Calendar (Altri calendari → Da URL), Apple Calendario (Archivio → Nuovo abbonamento) o Outlook (Aggiungi calendario → Da Internet). Si aggiorna da solo.</p>
     <div class="riga"><code id="feed">${feed}</code><button class="secondario" type="button" id="copiaFeed">Copia</button></div>
     <p class="aiuto" style="margin-top:6px">Google e Outlook ricaricano i calendari abbonati ogni qualche ora e devono raggiungere il server da internet (URL_PUBBLICO). Apple Calendario sullo stesso Mac va anche in locale.</p>
-    <h2 style="margin-top:22px">Bloccare gli orari in cui sei impegnato</h2>
+    <h2 style="margin-top:22px">Bloccare gli orari da un calendario in sola lettura</h2>
     <p class="aiuto">Incolla l'indirizzo iCal privato dei tuoi calendari, uno per riga: i loro impegni tolgono i posti liberi.<br>
       Google: Impostazioni → il calendario → "Indirizzo segreto in formato iCal". iCloud: condividi il calendario come pubblico e copia il link (webcal://). Outlook: Impostazioni → Calendari condivisi → Pubblica → ICS.</p>
     <textarea data-k="agenda.calendariOccupato" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"></textarea>
@@ -166,7 +173,57 @@ async function chiedi(percorso, opz = {}) {
   return j;
 }
 
+let servizi = {};
+function schedaConto(c = {}) {
+  const d = document.createElement('div');
+  d.className = 'conto';
+  d.dataset.id = c.id || '';
+  const opzioni = Object.entries(servizi).map(([k, v]) => '<option value="' + k + '"' + (k === (c.servizio || 'nextcloud') ? ' selected' : '') + '>' + v.nome + '</option>').join('');
+  d.innerHTML = '<div class="griglia">'
+    + '<div><label>Servizio</label><select class="c-servizio">' + opzioni + '</select></div>'
+    + '<div><label>Nome <small>(per te)</small></label><input class="c-nome" placeholder="es. Calendario laboratorio"></div>'
+    + '<div style="grid-column:1/-1"><label>Indirizzo CalDAV</label><input class="c-url"></div>'
+    + '<div><label>Utente</label><input class="c-utente" autocomplete="off"></div>'
+    + '<div><label>Password per le app <small class="c-pwinfo"></small></label><input class="c-password" type="password" autocomplete="new-password" placeholder="lascia vuoto per non cambiarla"></div>'
+    + '</div><p class="aiuto c-aiuto" style="margin:8px 0"></p>'
+    + '<div class="riga" style="margin:8px 0"><button class="secondario c-cerca" type="button">Cerca calendari</button><select class="c-calendario" style="max-width:320px"></select><span class="esito c-esito"></span></div>'
+    + '<div class="riga"><label class="check"><input type="checkbox" class="c-leggi"> legge gli impegni</label><label class="check"><input type="checkbox" class="c-scrivi"> scrive gli appuntamenti</label><button class="secondario c-prova" type="button">Prova</button><button class="pericolo c-togli" type="button">Rimuovi</button></div>';
+  const q = (k) => d.querySelector('.c-' + k);
+  q('nome').value = c.nome || ''; q('url').value = c.url || ''; q('utente').value = c.utente || '';
+  q('leggi').checked = c.leggi ?? true; q('scrivi').checked = c.scrivi ?? true;
+  q('pwinfo').textContent = c.passwordImpostata ? '(impostata)' : '';
+  if (c.calendario) q('calendario').innerHTML = '<option value="' + esc(c.calendario) + '">' + esc(c.calendarioNome || c.calendario) + '</option>';
+  else q('calendario').innerHTML = '<option value="">— prima cerca i calendari —</option>';
+  const aiuto = () => { const sv = servizi[q('servizio').value]; q('aiuto').textContent = sv ? sv.aiuto : ''; };
+  q('servizio').onchange = () => { const sv = servizi[q('servizio').value]; if (sv && (!q('url').value || Object.values(servizi).some((x) => x.url === q('url').value))) q('url').value = sv.url; aiuto(); };
+  aiuto();
+  q('cerca').onclick = async () => {
+    q('esito').textContent = 'cerco…';
+    try {
+      const { calendari } = await chiedi('/caldav/cerca', { method: 'POST', body: leggiConto(d) });
+      q('calendario').innerHTML = calendari.map((x) => '<option value="' + esc(x.url) + '">' + esc(x.nome) + (x.soloLettura ? ' (sola lettura)' : '') + '</option>').join('');
+      q('esito').textContent = calendari.length ? '✅ ' + calendari.length + ' calendari: scegli quello giusto e salva' : 'nessun calendario trovato';
+    } catch (e) { q('esito').textContent = '⚠️ ' + e.message; }
+  };
+  q('prova').onclick = async () => {
+    q('esito').textContent = 'provo…';
+    try { const r = await chiedi('/caldav/prova', { method: 'POST', body: leggiConto(d) }); q('esito').textContent = '✅ letti ' + r.eventi + ' impegni dei prossimi giorni'; }
+    catch (e) { q('esito').textContent = '⚠️ ' + e.message; }
+  };
+  q('togli').onclick = () => { if (confirm('Scollegare questo calendario? (gli eventi già scritti restano)')) d.remove(); };
+  $('#conti').append(d);
+}
+function leggiConto(d) {
+  const q = (k) => d.querySelector('.c-' + k);
+  const sel = q('calendario');
+  return { id: d.dataset.id || undefined, servizio: q('servizio').value, nome: q('nome').value.trim(), url: q('url').value.trim(), utente: q('utente').value.trim(), password: q('password').value,
+    calendario: sel.value, calendarioNome: sel.selectedOptions[0]?.textContent.replace(/ \(sola lettura\)$/, '') || '', leggi: q('leggi').checked, scrivi: q('scrivi').checked };
+}
+$('#aggiungiConto').onclick = () => schedaConto({ url: servizi.nextcloud?.url });
+
 function riempi() {
+  $('#conti').innerHTML = '';
+  for (const c of dati.calendari || []) schedaConto(c);
   for (const el of document.querySelectorAll('[data-k]')) {
     const v = prendi(dati, el.dataset.k);
     if (el.type === 'checkbox') el.checked = Boolean(v); else el.value = v ?? '';
@@ -176,6 +233,7 @@ function riempi() {
 function raccogli() {
   const o = {};
   for (const el of document.querySelectorAll('[data-k]')) metti(o, el.dataset.k, el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value);
+  o.calendari = [...document.querySelectorAll('.conto')].map(leggiConto);
   return o;
 }
 
@@ -186,7 +244,7 @@ async function elenco() {
   const oggi = new Date().toISOString().slice(0, 10);
   const lista = appuntamenti.filter((a) => $('#anchePassati').checked || (a.stato !== 'annullato' && a.giorno >= oggi))
     .sort((a, b) => (a.giorno + a.ora).localeCompare(b.giorno + b.ora));
-  $('#elenco').innerHTML = lista.length ? lista.map((a) => '<tr><td>' + quando(a) + '</td><td>' + esc(a.nome) + '</td><td>' + esc([a.telefono, a.email].filter(Boolean).join('<br>') || '-').replace(/&lt;br&gt;/g, '<br>') + '</td><td>' + esc(a.dettagli) + '<br><small class="aiuto">' + esc(a.canale) + '</small></td><td><span class="stato ' + (a.stato === 'da verificare' ? 'da' : a.stato) + '">' + a.stato + '</span></td><td>' + (a.stato !== 'annullato' ? '<button class="pericolo" data-annulla="' + a.id + '">Annulla</button>' : '') + '</td></tr>').join('')
+  $('#elenco').innerHTML = lista.length ? lista.map((a) => '<tr><td>' + quando(a) + '</td><td>' + esc(a.nome) + '</td><td>' + esc([a.telefono, a.email].filter(Boolean).join('<br>') || '-').replace(/&lt;br&gt;/g, '<br>') + '</td><td>' + esc(a.dettagli) + '<br><small class="aiuto">' + esc(a.canale) + '</small></td><td><span class="stato ' + (a.stato === 'da verificare' ? 'da' : a.stato) + '">' + a.stato + '</span></td><td>' + (a.stato !== 'annullato' ? '<button class="secondario" style="padding:5px 12px;font-size:13px;margin:0 6px 6px 0" data-sposta="' + a.id + '" data-quando="' + a.giorno + ' ' + a.ora + '">Sposta</button><button class="pericolo" data-annulla="' + a.id + '">Annulla</button>' : '') + '</td></tr>').join('')
     : '<tr><td colspan="6" class="vuoto">Nessun appuntamento.</td></tr>';
 }
 async function posti() {
@@ -198,6 +256,15 @@ async function posti() {
 }
 
 $('#elenco').onclick = async (e) => {
+  if (e.target.dataset.sposta) {
+    const nuovo = prompt('Nuovo giorno e ora (AAAA-MM-GG HH:MM)', e.target.dataset.quando);
+    const m = nuovo && nuovo.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}[:.]\d{2})$/);
+    if (!nuovo) return;
+    if (!m) return avviso('Formato: 2026-10-30 15:00');
+    try { const a = await chiedi('/appuntamenti/' + e.target.dataset.sposta + '/sposta', { method: 'POST', body: { giorno: m[1], ora: m[2] } }); avviso(a.stato === 'confermato' ? 'Appuntamento spostato' : 'Spostato, ma quell’orario non era libero: è "da verificare"'); elenco(); posti(); }
+    catch (err) { avviso(err.message); }
+    return;
+  }
   const id = e.target.dataset.annulla;
   if (!id || !confirm('Annullare questo appuntamento?')) return;
   try { await chiedi('/appuntamenti/' + id + '/annulla', { method: 'POST' }); avviso('Appuntamento annullato'); elenco(); posti(); } catch (err) { avviso(err.message); }
@@ -223,7 +290,7 @@ $('#provaEmail').onclick = async () => {
 };
 
 (async () => {
-  try { dati = await chiedi('/impostazioni'); riempi(); await Promise.all([elenco(), posti()]); }
+  try { servizi = await chiedi('/caldav/servizi'); dati = await chiedi('/impostazioni'); riempi(); await Promise.all([elenco(), posti()]); }
   catch (e) { avviso('Server non raggiungibile: ' + e.message, 8000); }
 })();
 </script>

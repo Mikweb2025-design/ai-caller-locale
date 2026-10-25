@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { impostazioni, fasce, GIORNI, CARTELLA_DATI } from './impostazioni.mjs';
+import { leggiEventi, salvaEvento, cancellaEvento, eventoNostro } from './caldav.mjs';
 
 const FILE = join(CARTELLA_DATI, 'appuntamenti.json');
 const ZONA = 'Europe/Rome';
@@ -41,13 +42,54 @@ export function appuntamenti() {
 }
 const salva = (lista) => writeFileSync(FILE, JSON.stringify(lista, null, 2));
 
-export function annulla(id) {
+export async function annulla(id) {
   const lista = appuntamenti();
   const a = lista.find((x) => x.id === id);
   if (!a) return null;
   a.stato = 'annullato';
   salva(lista);
+  await sincronizza(a);
   return a;
+}
+
+// Sposta un appuntamento (dal pannello admin): nuovo giorno e ora, aggiornato anche nei calendari.
+export async function sposta(id, giorno, ora) {
+  const min = minutiDa(ora);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(giorno || '') || min === null) throw new Error(`data o ora non valida: ${giorno} ${ora}`);
+  const lista = appuntamenti();
+  const a = lista.find((x) => x.id === id);
+  if (!a) return null;
+  const libero = (await postiLiberi({ escludi: id })).some((p) => p.giorno === giorno && p.minuti === min);
+  Object.assign(a, { giorno, ora: hhmm(min), stato: libero ? 'confermato' : 'da verificare', spostato: new Date().toISOString() });
+  salva(lista);
+  await sincronizza(a);
+  return a;
+}
+
+// --- calendari CalDAV collegati (Nextcloud, iCloud, ...) ---
+const conti = () => (impostazioni().calendari || []).filter((c) => c.url && c.utente && c.calendario);
+
+// Porta l'appuntamento in ogni calendario con la scrittura attiva: crea, aggiorna o cancella.
+export async function sincronizza(a) {
+  const errori = [];
+  a.calendari ||= {};
+  for (const c of conti().filter((x) => x.scrivi)) {
+    const conto = { ...c, url: c.calendario };
+    try {
+      if (a.stato === 'annullato') {
+        if (a.calendari[c.id]) { await cancellaEvento(conto, a.calendari[c.id]); delete a.calendari[c.id]; }
+      } else {
+        a.calendari[c.id] = await salvaEvento(conto, c.calendario, { uid: `${a.id}@ai-caller-locale`, ics: ics([a]), hrefEsistente: a.calendari[c.id] });
+      }
+    } catch (e) { errori.push(`${c.nome || c.url}: ${e.message}`); }
+  }
+  // salva gli indirizzi degli eventi creati
+  const lista = appuntamenti();
+  const i = lista.findIndex((x) => x.id === a.id);
+  if (i >= 0) { lista[i] = a; salva(lista); }
+  occupatoCache.quando = 0;
+  if (errori.length) console.warn('⚠️ calendario non aggiornato:', errori.join('; '));
+  return errori;
 }
 
 // --- impegni dai calendari collegati (URL iCal privati) ---
@@ -70,7 +112,8 @@ export function analizzaIcs(testo) {
   for (const r of righe) {
     if (r === 'BEGIN:VEVENT') ev = {};
     else if (r === 'END:VEVENT') {
-      if (ev?.inizio && ev.stato !== 'CANCELLED' && ev.trasparenza !== 'TRANSPARENT') {
+      // gli appuntamenti scritti da noi non contano come impegni: li conosciamo già
+      if (ev?.inizio && ev.stato !== 'CANCELLED' && ev.trasparenza !== 'TRANSPARENT' && !eventoNostro(ev.uid)) {
         const fine = ev.fine || { data: new Date(ev.inizio.data.getTime() + (ev.inizio.tuttoIlGiorno ? 86400000 : 3600000)) };
         eventi.push({ inizio: ev.inizio.data, fine: fine.data, titolo: ev.titolo || '' });
       }
@@ -79,6 +122,7 @@ export function analizzaIcs(testo) {
       if (r.startsWith('DTSTART')) ev.inizio = leggiData(r);
       else if (r.startsWith('DTEND')) ev.fine = leggiData(r);
       else if (r.startsWith('SUMMARY')) ev.titolo = r.slice(r.indexOf(':') + 1);
+      else if (r.startsWith('UID')) ev.uid = r.slice(r.indexOf(':') + 1).trim();
       else if (r.startsWith('STATUS')) ev.stato = r.slice(r.indexOf(':') + 1).trim();
       else if (r.startsWith('TRANSP')) ev.trasparenza = r.slice(r.indexOf(':') + 1).trim();
     }
@@ -99,10 +143,22 @@ export async function leggiCalendari(testo) {
   }
   return { eventi, errori };
 }
+export async function leggiCaldav(lista = conti().filter((c) => c.leggi)) {
+  const da = new Date(Date.now() - 86400000), a = new Date(Date.now() + ((Number(impostazioni().agenda.giorniAvanti) || 14) + 2) * 86400000);
+  const eventi = [], errori = [];
+  for (const c of lista) {
+    try {
+      for (const t of await leggiEventi({ ...c, url: c.calendario }, c.calendario, da, a)) eventi.push(...analizzaIcs(t));
+    } catch (e) { errori.push(`${c.nome || c.url}: ${e.message}`); }
+  }
+  return { eventi, errori };
+}
 export async function impegniEsterni({ forza = false } = {}) {
-  const chiave = impostazioni().agenda.calendariOccupato;
+  const i = impostazioni();
+  const chiave = i.agenda.calendariOccupato + JSON.stringify((i.calendari || []).map((c) => [c.id, c.calendario, c.leggi]));
   if (!forza && occupatoCache.chiave === chiave && Date.now() - occupatoCache.quando < 5 * 60000) return occupatoCache.eventi;
-  const { eventi, errori } = await leggiCalendari(chiave);
+  const [ics1, cal] = await Promise.all([leggiCalendari(i.agenda.calendariOccupato), leggiCaldav()]);
+  const eventi = [...ics1.eventi, ...cal.eventi], errori = [...ics1.errori, ...cal.errori];
   occupatoCache = { quando: Date.now(), chiave, eventi, errori };
   if (errori.length) console.warn('⚠️ calendari non letti:', errori.join('; '));
   return eventi;
@@ -110,10 +166,10 @@ export async function impegniEsterni({ forza = false } = {}) {
 export const erroriCalendari = () => occupatoCache.errori || [];
 
 // --- orari liberi ---
-export async function postiLiberi({ da = new Date(), giorni } = {}) {
+export async function postiLiberi({ da = new Date(), giorni, escludi } = {}) {
   const { orari, agenda } = impostazioni();
   const durata = Number(agenda.durataMinuti) || 60;
-  const presi = appuntamenti().filter((a) => a.stato !== 'annullato').map((a) => {
+  const presi = appuntamenti().filter((a) => a.stato !== 'annullato' && a.id !== escludi).map((a) => {
     const inizio = daRoma(a.giorno, minutiDa(a.ora));
     return { inizio, fine: new Date(inizio.getTime() + (a.durata || durata) * 60000) };
   });
@@ -165,8 +221,8 @@ export async function prenota({ nome, giorno, ora, dettagli = '', email = '', te
   const lista = appuntamenti();
   lista.push(a);
   salva(lista);
-  const esiti = await avvisa(a).catch((e) => ({ errore: e.message }));
-  return { appuntamento: a, ...esiti };
+  const [esiti, erroriCalendario] = await Promise.all([avvisa(a).catch((e) => ({ errore: e.message })), sincronizza(a)]);
+  return { appuntamento: a, ...esiti, calendari: erroriCalendario.length ? erroriCalendario : 'ok' };
 }
 
 // --- email ---
