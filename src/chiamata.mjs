@@ -23,6 +23,17 @@ function separa(testo) {
   return { azioni, parlato };
 }
 
+// "info chiocciola nome punto it" oppure "info@nome.it" → indirizzo scritto.
+export function emailDaVoce(testo) {
+  const normalizzato = String(testo || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(?:chiocciola|at)\b/g, '@')
+    .replace(/\b(?:punto|dot)\b/g, '.')
+    .replace(/\s+/g, '');
+  const trovato = normalizzato.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/i)?.[0] || '';
+  return trovato.length <= 254 ? trovato : '';
+}
+
 // Parakeet sceglie la lingua da solo: eco dell'altoparlante e rumori diventano spesso frasette
 // in inglese ("Yeah, we're here"). Se la frase è fatta soprattutto di parole inglesi, non è il cliente.
 const INGLESE = new Set("yeah yes yep so uh um oh the a an you and hmm we we're here there that that's it it's is are was just why because with what i i'm my me your this of to in on for be have do not but all can will like know right well hi hello bye thank thanks".split(' '));
@@ -81,6 +92,8 @@ export function gestisciChiamata(chiamata) {
   const deveChiedereEmail = Boolean(impostazioni().email?.chiediEmail);
   let emailChiesta = false;
   let attendeRispostaEmail = false;
+  let emailRaccolta = '';
+  let confermaInAttesa = null;
   let ultimoCliente = ''; // l'ultima frase del cliente, per capire se ha davvero salutato
   let ultimoReceptionist = '';
   const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
@@ -135,18 +148,23 @@ export function gestisciChiamata(chiamata) {
     chiamata.log(`👤 ${detto} (ascolto ${t.ms} ms${t.voce_occupata ? ", voce occupata" : ""})`);
     testo('cliente', detto);
     ultimoCliente = detto;
+    const registrato = await registraConfermaInAttesa(detto);
     await attendiCervello();
-    nuovoTurno(detto);
+    nuovoTurno(detto, registrato);
   }
 
-  function nuovoTurno(detto) {
+  function nuovoTurno(detto, registratoAdesso = false) {
     interrompi('nuova frase del cliente');
     primoAudio = true;
     if (!fineTurno) fineTurno = Date.now();
-    const perCervello = attendeRispostaEmail
+    if (attendeRispostaEmail) emailRaccolta = emailDaVoce(detto) || emailRaccolta;
+    let perCervello = attendeRispostaEmail
       ? `Risposta del cliente alla domanda "Le mando la conferma per email, quale indirizzo?": ${detto}`
       : detto;
     attendeRispostaEmail = false;
+    if (registratoAdesso) {
+      perCervello = `Il cliente ha confermato il riepilogo e il sistema ha registrato l'appuntamento. Digli che è tutto segnato e chiedi se gli serve altro. Non scrivere di nuovo CONFERMA. Il cliente ha detto: ${detto}`;
+    }
     turno = cervello.ascolta(perCervello);
     if (CONFIG.riempitivoSecondi >= 0) {
       riempitivo = setTimeout(async () => {
@@ -175,6 +193,7 @@ export function gestisciChiamata(chiamata) {
       // punti e domanda. Spezzare ogni frase faceva ripartire il tono da zero e suonava robotico.
       const separata = separa(completo);
       const primaConferma = separata.azioni.find((a) => a.tipo === 'CONFERMA');
+      if (primaConferma && emailRaccolta) primaConferma.argomenti[4] = emailRaccolta;
       // Il modello può tentare di chiudere la prenotazione appena riceve il motivo. Se nel pannello
       // è attiva la raccolta email, la domanda viene imposta qui: non dipende dalla memoria del modello.
       if (deveChiedereEmail && !emailChiesta && primaConferma && !primaConferma.argomenti[4]) {
@@ -209,14 +228,13 @@ export function gestisciChiamata(chiamata) {
           const [nome, giorno, ora, dettagli, email] = a.argomenti;
           if (confermato) {
             chiamata.log('⚠️ CONFERMA ignorata: l’appuntamento di questa chiamata è già stato registrato');
-          } else if (!consensoPrenotazione(ultimoCliente, precedente, nome)) {
-            chiamata.log('⚠️ CONFERMA ignorata: manca il consenso al riepilogo precedente');
           } else if (!nome || !giorno || !ora || !dettagli || !/^\d{4}-\d{2}-\d{2}$/.test(giorno) || !/^\d{1,2}:\d{2}$/.test(ora)) {
             chiamata.log('⚠️ CONFERMA ignorata: mancano nome, giorno, ora o dettagli');
+          } else if (!consensoPrenotazione(ultimoCliente, precedente, nome)) {
+            confermaInAttesa = { nome, giorno, ora, dettagli, email: email || emailRaccolta };
+            chiamata.log('⏸️ CONFERMA in attesa del sì al riepilogo');
           } else {
-            confermato = true;
-            const esito = await confermaAppuntamento({ nome, giorno, ora, dettagli, email }, chiamata);
-            if (!esito.ok) confermato = false;
+            await salvaConferma({ nome, giorno, ora, dettagli, email: email || emailRaccolta }, 'con il sì al riepilogo');
           }
         }
         if (a.tipo === 'RICHIAMA') {
@@ -255,6 +273,31 @@ export function gestisciChiamata(chiamata) {
     return cervello;
   }
 
+  async function salvaConferma(dati, motivo) {
+    if (confermato) return true;
+    confermato = true;
+    const esito = await confermaAppuntamento(dati, chiamata);
+    if (!esito.ok) {
+      confermato = false;
+      return false;
+    }
+    confermaInAttesa = null;
+    chiamata.log(`✅ appuntamento registrato ${motivo}`);
+    return true;
+  }
+
+  async function registraConfermaInAttesa(detto) {
+    if (!confermaInAttesa || confermato) return false;
+    if (!consensoPrenotazione(detto, ultimoReceptionist, confermaInAttesa.nome)) {
+      if (/\b(no|non|ma|però|invece|anzi|cambi\w*|spost\w*|nein|nicht|aber|sondern)\b/i.test(detto)) confermaInAttesa = null;
+      return false;
+    }
+    const dati = confermaInAttesa;
+    const salvato = await salvaConferma(dati, 'dopo il sì al riepilogo');
+    if (!salvato) confermaInAttesa = dati;
+    return salvato;
+  }
+
   chiamata.alPartire = async () => {
     const pronto = inAttesa.get(chiamata.callSid) || preparaCervello(chiamata.chiamante);
     inAttesa.delete(chiamata.callSid);
@@ -279,7 +322,8 @@ export function gestisciChiamata(chiamata) {
     testo('cliente', t.trim());
     ultimoCliente = t.trim();
     fineTurno = Date.now();
-    nuovoTurno(t.trim());
+    const registrato = await registraConfermaInAttesa(t.trim());
+    nuovoTurno(t.trim(), registrato);
   };
 
   chiamata.alAudio = (payload) => {
@@ -318,9 +362,15 @@ export function gestisciChiamata(chiamata) {
     }
   };
 
-  chiamata.allaFine = () => {
+  chiamata.allaFine = async () => {
     interrompi('fine chiamata');
     cervello?.chiudi();
+    // Salvagente: se nome, data, ora e motivo erano già completi, la chiusura del browser
+    // non deve far perdere l'appuntamento solo perché il modello non ha ripetuto CONFERMA.
+    if (confermaInAttesa && !confermato) {
+      const dati = confermaInAttesa;
+      await salvaConferma(dati, 'alla chiusura della chiamata');
+    }
     if (ritardi.length) chiamata.log('⏱ ritardi (fine frase → primo audio):', ritardi.join(', '), 'ms');
   };
 }
