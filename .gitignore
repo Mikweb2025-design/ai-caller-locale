@@ -30,3 +30,7 @@ voci/proposta-*.wav
 dati/
 voci/*-precedente.*
 voci/prova-*.mp3
+voci/vecchie/
+voci/confronto-*.wav
+voci/rif-*.wav
+voci/confronto-*

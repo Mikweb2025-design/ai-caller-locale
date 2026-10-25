@@ -31,7 +31,7 @@ STT_MODELLO = os.environ.get('STT_MODELLO', 'mlx-community/parakeet-tdt-0.6b-v3'
 CAMPIONE = RADICE / 'voci' / 'receptionist.wav'
 TTS_MODELLO = os.environ.get('TTS_MODELLO') or ('mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit' if CAMPIONE.exists()
                                                 else 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit')
-TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.3)  # più bassa = più pacata e regolare
+TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.6)  # più bassa = più piatta, più alta = più espressiva (e meno prevedibile)
 TTS_VOCE = os.environ.get('TTS_VOCE', 'ryan')
 TTS_ISTRUZIONI = os.environ.get('TTS_ISTRUZIONI', '') or None
 # clonazione da un campione (solo con i modelli "Base"): file wav a 24 kHz e la sua trascrizione
@@ -77,7 +77,8 @@ def lavoratore_stt(richieste, risposte, genitore):
     # Processo a parte: così l'ascolto non aspetta mai che la voce finisca di generare.
     # Se il motore principale muore (anche con kill), questo si chiude da solo: un processo
     # orfano terrebbe occupati ~3-6 GB di memoria per sempre.
-    import queue
+    import queue, signal
+    signal.signal(signal.SIGINT, signal.SIG_IGN)  # Ctrl-C lo gestisce il motore principale, che chiude anche questo
     if STT_MLX:
         import mlx.core as mx
         from mlx_audio.stt.utils import load_model as carica_stt
@@ -229,8 +230,13 @@ if __name__ == '__main__':
     figlio.start()
     import signal, atexit
     atexit.register(figlio.terminate)
+    def esci(*_):
+        # una volta sola: un secondo Ctrl-C durante la chiusura non deve interromperla
+        for x in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            signal.signal(x, signal.SIG_IGN)
+        sys.exit(0)
     for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # kill, Ctrl-C, terminale chiuso → uscita pulita
-        signal.signal(s, lambda *_: sys.exit(0))
+        signal.signal(s, esci)
     risposte.get()
     # un giro a vuoto: il primo uso di MLX è lento, meglio farlo adesso
     for _ in parla('Pronto.'):

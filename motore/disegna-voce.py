@@ -8,10 +8,11 @@ from mlx_audio.tts.utils import load_model
 
 RADICE = Path(__file__).resolve().parent.parent
 DESCRIZIONE = (
-    "A 35-year-old man born and raised in Milan, Italy, answering the phone at work. "
-    "Native Italian with a clear, natural Milanese accent: northern Italian vowels, typical Milan intonation and rhythm. "
-    "Relaxed, friendly and professional, conversational like a real person on a normal call, not a voice-over and not reading. "
-    "Medium-low warm voice, calm even pace, natural small pauses, no excitement, no theatrical emphasis."
+    "A 35-year-old man from Milan, Italy, talking on the phone with a customer he likes. "
+    "Native Italian with a natural Milanese accent and the lively, musical intonation of a real Milanese speaker. "
+    "Warm, friendly and confident, you can hear him smiling; engaging and persuasive like a good salesperson, "
+    "expressive and dynamic, varied pitch and natural rhythm, never monotone, never flat, never robotic. "
+    "Spontaneous conversational delivery, not reading a script."
 )
 # Testo del campione: frasi normali, senza intercalari ("allora", "ehm"), che il clone tende poi a ripetere.
 TESTO = ("Buongiorno, la sento bene. Per il tagliando ho posto giovedì mattina alle nove, oppure venerdì alle due "
@@ -22,7 +23,7 @@ m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit")
 (RADICE / 'voci').mkdir(exist_ok=True)
 for i in range(1, n + 1):
     t = time.time()
-    a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=DESCRIZIONE, lang_code='italian', temperature=0.6)])
+    a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=DESCRIZIONE, lang_code='italian', temperature=0.8)])
     f = RADICE / 'voci' / f'proposta-{i}.wav'
     sf.write(f, a, m.sample_rate)
     print(f'{f.name}: {len(a) / m.sample_rate:.1f} s di audio in {time.time() - t:.1f} s', flush=True)
