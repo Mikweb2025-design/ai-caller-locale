@@ -38,12 +38,16 @@ export async function trascrivi(pcm) {
   return r.json();
 }
 
+// La voce scelta nel pannello (nome del file .wav in voci/): vuoto = quella predefinita.
+import { impostazioni } from './impostazioni.mjs';
+const campioneAttivo = () => String(impostazioni().receptionist?.voce?.campione || '').trim();
+
 // Legge una frase ad alta voce: chiama alPezzo(μ-law) man mano che l'audio è pronto.
 export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it' } = {}) {
   const r = await fetch(`${CONFIG.motore}/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ testo, voce, lingua }),
+    body: JSON.stringify({ testo, voce, lingua, campione: campioneAttivo() }),
     signal: segnale,
   });
   if (!r.ok) throw new Error(`motore /tts ${r.status}`);
@@ -76,7 +80,7 @@ async function sintetizzaBene(testo, lingua, tentativi = 4) {
 
 const cache = new Map();
 export async function frasePronta(testo, lingua = 'it') {
-  const k = `${lingua}|${testo}`;
+  const k = `${lingua}|${campioneAttivo()}|${testo}`;
   if (!cache.has(k)) cache.set(k, sintetizzaBene(testo, lingua).catch((e) => { cache.delete(k); throw e; }));
   return cache.get(k);
 }

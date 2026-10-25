@@ -3,8 +3,10 @@
 // (Parakeet → Claude Code o servizio compatibile OpenAI → Qwen3-TTS).
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
-import { CONFIG } from './config.mjs';
+import { CONFIG, RADICE } from './config.mjs';
 import { twilio, twilioConfigurato, firmaAttiva, firmaValida, urlPubblico, indirizzoWebhook, verifica, collegaNumero, chiamaNumero, SEGRETO } from './twilio.mjs';
 import { ChiamataTwilio } from './twilio-stream.mjs';
 import { gestisciChiamata, preriscalda, RIEMPITIVO } from './chiamata.mjs';
@@ -33,6 +35,19 @@ function nuovoGettone() {
 }
 
 const xml = (s) => String(s ?? '').replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+
+// Le voci del receptionist: i campioni .wav della cartella voci/ (quello attivo lo sceglie il pannello)
+const CARTELLA_VOCI = join(RADICE, 'voci');
+
+// PCM 16 bit mono 24 kHz → file WAV con l'intestazione standard da 44 byte
+function wav24k(pcm) {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8);
+  h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(24000, 24); h.writeUInt32LE(48000, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+  h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
 
 // Senza SEGRETO il server vale solo per questo computer: richieste da un altro nome (Host), da un tunnel
 // o da un proxy (che aggiungono intestazioni X-Forwarded-*) vengono rifiutate, così pannello e API
@@ -110,6 +125,55 @@ const server = http.createServer(async (req, res) => {
         return json(200, impostazioniPubbliche());
       }
       if (percorso === '/appuntamenti') return json(200, { appuntamenti: appuntamenti() });
+      // Voci del receptionist: elenco, ascolto, nuova voce registrata dal microfono, attivazione, rimozione
+      if (percorso === '/voce/elenco') {
+        const attiva = String(impostazioni().receptionist?.voce?.campione || '') || 'receptionist.wav';
+        const voci = readdirSync(CARTELLA_VOCI)
+          .filter((f) => f.endsWith('.wav') && statSync(join(CARTELLA_VOCI, f)).isFile())
+          .map((nome) => ({ nome, attivo: nome === attiva, secondi: Math.round((statSync(join(CARTELLA_VOCI, nome)).size / 48000) * 10) / 10 }))
+          .sort((a, b) => (Number(b.attivo) - Number(a.attivo)) || a.nome.localeCompare(b.nome, 'it'));
+        return json(200, { attiva, voci });
+      }
+      const va = percorso.match(/^\/voce\/audio\/([\w-]+\.wav)$/);
+      if (va && req.method === 'GET') {
+        const f = join(CARTELLA_VOCI, va[1]);
+        if (!existsSync(f)) return json(404, { errore: 'voce non trovata' });
+        const dati = readFileSync(f);
+        res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': dati.length, 'Cache-Control': 'no-store' });
+        return res.end(dati);
+      }
+      if (percorso === '/voce/campione' && req.method === 'POST') {
+        const nome = String(corpo.nome || '').trim().toLowerCase().replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+        if (!nome) return json(400, { errore: 'scrivi il nome della voce (es. Maria)' });
+        if (nome === 'receptionist') return json(400, { errore: '"receptionist" è riservato alla voce di partenza: scegli un altro nome' });
+        const pcm = Buffer.from(String(corpo.pcm || ''), 'base64');
+        const secondi = pcm.length / 48000; // PCM 16 bit a 24 kHz monocanale
+        if (!(secondi >= 3)) return json(400, { errore: `registrazione troppo corta (${secondi.toFixed(1)} s): leggi il testo per almeno 20 secondi, meglio di più` });
+        if (secondi > 60) return json(400, { errore: `registrazione troppo lunga (${secondi.toFixed(0)} s): massimo un minuto` });
+        const testo = String(corpo.testo || '').trim();
+        if (!testo) return json(400, { errore: "serve il testo che hai letto: senza di esso la voce non impara a parlare" });
+        writeFileSync(join(CARTELLA_VOCI, nome + '.wav'), wav24k(pcm));
+        writeFileSync(join(CARTELLA_VOCI, nome + '.json'), JSON.stringify({ testo }, null, 2), { mode: 0o600 });
+        return json(200, { ok: true, nome: nome + '.wav', secondi: Math.round(secondi * 10) / 10 });
+      }
+      if (percorso === '/voce/attiva' && req.method === 'POST') {
+        const nome = String(corpo.nome || '').trim();
+        if (nome && !/^(receptionist|[\w-]+)\.wav$/.test(nome)) return json(400, { errore: 'nome voce non valido' });
+        if (nome && nome !== 'receptionist.wav' && !existsSync(join(CARTELLA_VOCI, nome))) return json(400, { errore: 'voce non trovata: aggiorna l\u2019elenco' });
+        salvaImpostazioni({ receptionist: { voce: { campione: nome === 'receptionist.wav' ? '' : nome } } });
+        return json(200, impostazioniPubbliche());
+      }
+      if (percorso === '/voce/elimina' && req.method === 'POST') {
+        const nome = String(corpo.nome || '').trim();
+        if (!/^[\w-]+\.wav$/.test(nome) || nome === 'receptionist.wav') return json(400, { errore: 'questa voce non si può eliminare' });
+        if (nome === impostazioni().receptionist?.voce?.campione) return json(400, { errore: 'prima attiva un\u2019altra voce, poi elimina questa' });
+        const f = join(CARTELLA_VOCI, nome);
+        if (!existsSync(f)) return json(404, { errore: 'voce non trovata' });
+        unlinkSync(f);
+        const j = f.replace(/\.wav$/, '.json');
+        if (existsSync(j)) unlinkSync(j);
+        return json(200, { ok: true });
+      }
       const m = percorso.match(/^\/appuntamenti\/([a-f0-9]+)\/annulla$/);
       if (m && req.method === 'POST') { const a = await annulla(m[1]); return a ? json(200, a) : json(404, { errore: 'appuntamento non trovato' }); }
       const sp = percorso.match(/^\/appuntamenti\/([a-f0-9]+)\/sposta$/);

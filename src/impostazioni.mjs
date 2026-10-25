@@ -39,6 +39,7 @@ export const PREDEFINITE = {
     genere: process.env.GENERE_RECEPTIONIST || 'm',
     saluto: '', // vuoto = "<attività>, buongiorno! Sono <nome>, mi dica."
     note: '', // istruzioni in più, in italiano
+    voce: { campione: '' }, // nome del file .wav in voci/ scelto dal pannello; vuoto = voci/receptionist.wav
   },
   orari: {
     // fasce di apertura per giorno, "08:00-12:30, 14:00-18:30" (vuoto = chiuso)
@@ -193,5 +194,7 @@ export function controllaImpostazioni(i) {
   if (vista.colore && !/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(String(vista.colore).trim())) errori.push('il colore di accento deve essere un codice esadecimale, per esempio #c9a227');
   if (vista.tema && !['chiaro', 'scuro'].includes(vista.tema)) errori.push("il tema è 'chiaro', 'scuro' o vuoto (segue il sistema)");
   if (vista.logo && !/^https?:\/\//i.test(String(vista.logo).trim())) errori.push('logo: serve un indirizzo completo che comincia con http o https');
+  const c = String(i.receptionist?.voce?.campione || '').trim();
+  if (c && !/^[\w-]+\.wav$/.test(c)) errori.push("la voce è il nome di un file .wav dell'elenco, oppure vuoto (voce predefinita)");
   return errori;
 }

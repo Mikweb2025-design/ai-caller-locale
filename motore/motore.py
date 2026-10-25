@@ -136,13 +136,16 @@ def a_8k(audio):
 LINGUE = {'it': 'italian', 'de': 'german'}  # lingua della frase → lingua di Qwen3-TTS
 
 
-def parla(testo, nome_voce=None, lingua='italian'):
+def parla(testo, nome_voce=None, lingua='italian', rif=None):
     # tetto all'audio: il codec fa 12 passi al secondo e una persona dice almeno ~8 caratteri al secondo.
     # Senza tetto, ogni tanto il modello non si ferma più e genera minuti di silenzio o rumore.
     massimo = int(12 * (len(testo) / 8 + 1.5))
     kw = dict(text=testo, lang_code=lingua, stream=True, streaming_interval=0.25, temperature=TTS_TEMPERATURA,
               max_tokens=massimo)
-    if TTS_RIF_AUDIO:
+    if rif:
+        # campione scelto dal pannello: (percorso, trascrizione); se non ha trascrizione propria, quella globale
+        kw.update(ref_audio=rif[0], ref_text=rif[1] or TTS_RIF_TESTO or '')
+    elif TTS_RIF_AUDIO:
         kw.update(ref_audio=TTS_RIF_AUDIO, ref_text=TTS_RIF_TESTO)
     else:
         kw.update(voice=nome_voce or TTS_VOCE, instruct=TTS_ISTRUZIONI)
@@ -208,13 +211,27 @@ class Gestore(BaseHTTPRequestHandler):
             return self._json(200, {'testo': testo, 'ms': round((time.time() - t) * 1000), 'voce_occupata': voce_occupata})
         if self.path == '/tts':
             richiesta = json.loads(corpo or b'{}')
+            # la voce cambiata dal pannello: un file .wav della cartella voci/ (la trascrizione sta in voci/<nome>.json)
+            rif = None
+            campione = str(richiesta.get('campione') or '').strip()
+            if campione:
+                a = RADICE / 'voci' / campione
+                if '/' not in campione and not campione.startswith('.') and a.is_file():
+                    t = None
+                    j = RADICE / 'voci' / (campione[:-4] + '.json' if campione.endswith('.wav') else campione + '.json')
+                    if j.is_file():
+                        try:
+                            t = json.loads(j.read_text()).get('testo')
+                        except Exception:
+                            pass
+                    rif = (str(a), t)
             self.send_response(200)
             self.send_header('Content-Type', 'audio/L16; rate=8000')
             self.send_header('Transfer-Encoding', 'chunked')
             self.end_headers()
             try:
                 with blocco_tts:
-                    for pezzo in parla(richiesta.get('testo', ''), richiesta.get('voce'), LINGUE.get(richiesta.get('lingua'), 'italian')):
+                    for pezzo in parla(richiesta.get('testo', ''), richiesta.get('voce'), LINGUE.get(richiesta.get('lingua'), 'italian'), rif=rif):
                         self.wfile.write(f'{len(pezzo):X}\r\n'.encode() + pezzo + b'\r\n')
                         self.wfile.flush()
                 self.wfile.write(b'0\r\n\r\n')

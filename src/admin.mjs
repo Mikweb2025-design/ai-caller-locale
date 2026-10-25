@@ -92,7 +92,7 @@ export function paginaAdmin({ api, web, feed }) {
 
   <section data-scheda="Receptionist">
     <h2>Il receptionist</h2>
-    <p class="aiuto">Nome, saluto e istruzioni in più. La voce si cambia in voci/receptionist.wav.</p>
+    <p class="aiuto">Nome, saluto e istruzioni in più. La voce si cambia nella scheda <strong>Voce</strong>.</p>
     <div class="griglia">
       <div><label>Nome</label><input data-k="receptionist.nome"></div>
       <div><label>Genere <small>(per l'italiano: pronto/pronta)</small></label><select data-k="receptionist.genere"><option value="m">uomo</option><option value="f">donna</option></select></div>
@@ -103,6 +103,26 @@ export function paginaAdmin({ api, web, feed }) {
     <div style="margin-top:12px"><label>Saluto in tedesco <small>(si aggiunge a quello italiano; {nome} = nome del receptionist)</small></label><input data-k="lingue.salutoTedesco"></div>
     <div style="margin-top:12px"><label>Saluto <small>(vuoto = "&lt;attività&gt;, buongiorno! Sono &lt;nome&gt;, mi dica.")</small></label><input data-k="receptionist.saluto"></div>
     <div style="margin-top:12px"><label>Istruzioni in più <small>(in italiano, es. "Il venerdì pomeriggio niente revisioni")</small></label><textarea data-k="receptionist.note"></textarea></div>
+  </section>
+
+  <section data-scheda="Voce">
+    <h2>La voce del receptionist</h2>
+    <p class="aiuto">Quella attiva parla nella prossima chiamata (ci mette qualche secondo la prima volta, poi è pronta).</p>
+    <div class="posti" id="vociElenco"></div>
+    <div class="riga" style="margin-top:10px"><button class="secondario" type="button" id="vociAggiorna">Aggiorna elenco</button><span class="esito" id="vociEsito"></span></div>
+
+    <h2 style="margin-top:26px">Creare una voce nuova, clonata</h2>
+    <p class="aiuto">Leggi ad alta voce il testo qui sotto, per 20-30 secondi e parlando come parli per telefono: il receptionist prende quel modo di parlare (l'accento compreso) e lo usa con i clienti. Serve il microfono di questo computer: quando premi Registra il browser chiede il permesso.</p>
+    <div class="riga" style="flex-wrap:wrap">
+      <button type="button" id="vocRegistra">🎙️ Registra</button>
+      <button type="button" id="vocFerma" class="secondario" disabled>■ Ferma</button>
+      <span class="esito" id="vocDurata"></span>
+    </div>
+    <audio id="vocAscolta" controls style="display:none;margin-top:10px;max-width:340px;width:100%"></audio>
+    <div style="margin-top:12px;max-width:420px"><label>Nome della voce <small>(es. Maria)</small></label><input id="vocNome" placeholder="Maria"></div>
+    <div style="margin-top:12px"><label>Il testo da leggere durante la registrazione <small>(parlalo scoprendo frase per frase, non cantandolo)</small></label><textarea id="vocTesto" style="min-height:110px"></textarea></div>
+    <div class="riga" style="margin-top:10px;flex-wrap:wrap"><button type="button" id="vocSalva" disabled>Salva la voce nell'elenco</button><span class="esito" id="vocRegEsito"></span></div>
+    <p class="aiuto" style="margin-top:8px">Dopo "Salva" la voce compare nell'elenco qui sopra: per usarla premi <strong>Attiva</strong>. La vecchia voce resta e puoi tornarci quando vuoi.</p>
   </section>
 
   <section data-scheda="Orari">
@@ -502,8 +522,118 @@ $('#provaEmail').onclick = async () => {
   catch (e) { avviso('Email non partita: ' + e.message, 8000); }
 };
 
+// Voce: elenco, attivazione ed eliminazione + registrazione di una voce nuova clonata
+let datiVoce = null, vocRec = null, vocPezzi = [], vocT = 0, vocTimer = 0;
+const vocTestoBase = 'Buongiorno, mi dica pure. Sì, giovedì mattina alle nove va benissimo. Se preferisce il pomeriggio, venerdì alle tre c\u2019è ancora un posto. Come si chiama, scusi? Grazie mille, segno subito il suo appuntamento e le mando la conferma su email. Se le serve spostarlo, mi risponde una telefonata e lo sistemiamo in due minuti. Arrivederci e a presto!';
+$('#vocTesto').value = vocTestoBase;
+
+async function vociRicarica() {
+  $('#vociEsito').textContent = '';
+  try {
+    const { voci } = await chiedi('/voce/elenco');
+    $('#vociElenco').innerHTML = voci.map((v) => {
+      const nome = v.nome.replace(/\.wav$/, '');
+      return '<div class="riga" style="flex-wrap:wrap;border-top:1px solid var(--bordo);padding:8px 0">'
+        + '<strong style="min-width:110px">' + esc(nome) + (v.attivo ? ' <span class="stato confermato">in uso</span>' : '') + '</strong>'
+        + '<audio controls preload="none" style="height:32px;max-width:260px" src="' + API + '/voce/audio/' + v.nome + '"></audio>'
+        + (v.attivo ? '' : '<button class="secondario" type="button" data-voceattiva="' + v.nome + '" style="padding:6px 14px">Attiva</button>')
+        + (!v.attivo && v.nome !== 'receptionist.wav' ? '<button class="pericolo" type="button" data-voceelimina="' + v.nome + '">Elimina</button>' : '')
+        + (v.secondi >= 1 ? '<span class="esito">' + v.secondi.toFixed(0) + ' s</span>' : '') + '</div>';
+    }).join('');
+  } catch (e) { $('#vociEsito').textContent = '⚠️ ' + e.message; }
+}
+$('#vociAggiorna').onclick = vociRicarica;
+$('#vociElenco').onclick = async (e) => {
+  const att = e.target.dataset.voceattiva;
+  const del = e.target.dataset.voceelimina;
+  if (!att && !del) return;
+  if (att) {
+    $('#vociEsito').textContent = 'attivo…';
+    try { dati = await chiedi('/voce/attiva', { method: 'POST', body: { nome: att } }); await vociRicarica(); $('#vociEsito').textContent = '✅ da adesso parla con la voce "' + att.replace(/\.wav$/, '') + '" (dalla prossima chiamata)'; }
+    catch (err) { $('#vociEsito').textContent = '⚠️ ' + err.message; }
+  } else if (del) {
+    if (!confirm('Eliminare per sempre la voce "' + del.replace(/\.wav$/, '') + '"?')) return;
+    try { await chiedi('/voce/elimina', { method: 'POST', body: { nome: del } }); await vociRicarica(); $('#vociEsito').textContent = 'voce eliminata'; }
+    catch (err) { $('#vociEsito').textContent = '⚠️ ' + err.message; }
+  }
+};
+
+// il PCM registrato → WAV 24 kHz (locale per l'anteprima, base64 per il server)
+const wavBlob = (pcmBu) => {
+  const h = new ArrayBuffer(44 + pcmBu.byteLength);
+  const dv = new DataView(h);
+  const n = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+  n(0, 'RIFF'); dv.setUint32(4, 36 + pcmBu.byteLength, true); n(8, 'WAVE'); n(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 24000, true); dv.setUint32(28, 48000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  n(36, 'data'); dv.setUint32(40, pcmBu.byteLength, true);
+  new Uint8Array(h, 44).set(new Uint8Array(pcmBu));
+  return new Blob([h], { type: 'audio/wav' });
+};
+
+$('#vocRegistra').onclick = async () => {
+  $('#vocRegEsito').textContent = '';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    vocPezzi = []; vocT = Date.now();
+    vocRec = new MediaRecorder(stream);
+    vocRec.ondataavailable = (e) => vocPezzi.push(e.data);
+    vocRec.onstop = () => { stream.getTracks().forEach((t) => t.stop()); vocFinita(); };
+    vocRec.start();
+    $('#vocRegistra').disabled = true; $('#vocFerma').disabled = false; $('#vocSalva').disabled = true;
+    $('#vocAscolta').style.display = 'none';
+    vocTimer = setInterval(() => {
+      const s = (Date.now() - vocT) / 1000;
+      $('#vocDurata').textContent = s.toFixed(0) + ' s… ' + (s < 15 ? 'continua a leggere' : 'va bene così, puoi fermare');
+      if (s >= 60) vocRec.state !== 'inactive' && vocRec.stop();
+    }, 400);
+  } catch (e) { $('#vocRegEsito').textContent = '⚠️ ' + e.message; }
+};
+$('#vocFerma').onclick = () => { if (vocRec && vocRec.state !== 'inactive') vocRec.stop(); };
+
+async function vocFinita() {
+  clearInterval(vocTimer);
+  $('#vocRegistra').disabled = false; $('#vocFerma').disabled = true;
+  $('#vocDurata').textContent = 'preparo la registrazione…';
+  try {
+    const blob = new Blob(vocPezzi, { type: vocRec.mimeType || 'audio/webm' });
+    const scambiata = await new (window.AudioContext || window.webkitAudioContext)().decodeAudioData(await blob.arrayBuffer());
+    const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(scambiata.duration * 24000)), 24000);
+    const src = off.createBufferSource(); src.buffer = scambiata; src.connect(off.destination); src.start();
+    const ridotta = await off.startRendering();
+    const f = ridotta.getChannelData(0);
+    const pcm = new ArrayBuffer(f.length * 2);
+    const dv = new DataView(pcm);
+    for (let i = 0; i < f.length; i++) dv.setInt16(i * 2, Math.max(-32768, Math.min(32767, Math.round(f[i] * 32767))), true);
+    const b = new Uint8Array(pcm);
+    let s = '';
+    for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    datiVoce = { pcm: btoa(s), secondi: f.length / 24000 };
+    $('#vocDurata').textContent = datiVoce.secondi.toFixed(0) + ' s registrati: ascoltala, poi premi Salva';
+    $('#vocAscolta').src = URL.createObjectURL(wavBlob(pcm));
+    $('#vocAscolta').style.display = 'block';
+    $('#vocSalva').disabled = false;
+  } catch (e) {
+    $('#vocDurata').textContent = ''; $('#vocRegEsito').textContent = '⚠️ ' + e.message;
+  }
+}
+$('#vocSalva').onclick = async () => {
+  if (!datiVoce) return;
+  const nome = ($('#vocNome').value || '').trim();
+  const testo = $('#vocTesto').value.trim();
+  if (!nome) return avviso('Scegli un nome per la voce (es. Maria)');
+  if (!testo) return avviso('Serve il testo che hai letto durante la registrazione');
+  if (testo.length < 40) return avviso('Il testo è troppo corto: da leggere per 20-30 secondi servono almeno qualche frase in più');
+  $('#vocSalva').disabled = true; $('#vocRegEsito').textContent = 'salvo la voce…';
+  try {
+    const r = await chiedi('/voce/campione', { method: 'POST', body: { nome, pcm: datiVoce.pcm, testo } });
+    $('#vocRegEsito').textContent = '✅ voce "' + r.nome.replace(/\.wav$/, '') + '" salvata (' + r.secondi + ' s): premi Attiva nell\u2019elenco per usarla';
+    await vociRicarica();
+  } catch (e) { $('#vocRegEsito').textContent = '⚠️ ' + e.message; $('#vocSalva').disabled = false; }
+};
+
 (async () => {
-  try { servizi = await chiedi('/caldav/servizi'); serviziCervello = await chiedi('/cervello/servizi'); dati = await chiedi('/impostazioni'); riempi(); await Promise.all([elenco(), posti()]); }
+  try { servizi = await chiedi('/caldav/servizi'); serviziCervello = await chiedi('/cervello/servizi'); dati = await chiedi('/impostazioni'); riempi(); await Promise.all([elenco(), posti(), vociRicarica()]); }
   catch (e) { avviso('Server non raggiungibile: ' + e.message, 8000); }
 })();
 </script>
