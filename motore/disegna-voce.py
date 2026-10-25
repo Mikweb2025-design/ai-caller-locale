@@ -1,7 +1,7 @@
 # Crea il campione della voce del receptionist con Qwen3-TTS VoiceDesign (descrizione a parole),
 # poi il motore la clona con il modello Base: stessa voce in ogni frase, e veloce.
 # Uso: python3 motore/disegna-voce.py [maschile|femminile] [quante proposte]  → voci/proposta-*.wav
-import sys, time
+import sys, time, os
 from pathlib import Path
 import numpy as np, soundfile as sf
 from mlx_audio.tts.utils import load_model
@@ -48,11 +48,37 @@ TESTO = ("Buongiorno, la sento benissimo. Per il tagliando posso proporle gioved
 
 m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit")
 (RADICE / 'voci').mkdir(exist_ok=True)
+
+RIPRESE = max(1, int(os.environ.get('RIPRESE', '1')))
+
+def vivacita(a, sr):
+    """Quanto la voce è viva: scarto del tono (Hz) sulle sillabe sonore e quante sono."""
+    w, h = 960, 480  # 40 ms, salto 20 ms
+    f0s = []
+    for i in range(0, len(a) - w, h):
+        fr = a[i:i+w]
+        if float(np.sqrt((fr * fr).mean())) < 0.01:
+            continue
+        fr = fr - fr.mean()
+        ac = np.correlate(fr, fr, 'full')[w - 1:]
+        seg = ac[69:343]  # 70–350 Hz
+        if float(seg.max()) < 0.25 * float(ac[0]):
+            continue
+        f0s.append(sr / (69 + int(seg.argmax())))
+    if len(f0s) < 10:
+        return 0.0, 0.0
+    return float(np.std(f0s)), float(np.median(f0s))
+
 for i in range(1, n + 1):
     t = time.time()
     d = des[(i - 1) % len(des)] if isinstance(des, list) else DESCRIZIONE
-    a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=d, lang_code='italian', temperature=0.9)])
     f = RADICE / 'voci' / f'{PREFISSO}-{i}.wav'
-    sf.write(f, a, m.sample_rate)
-    print(f'{f.name}: {len(a) / m.sample_rate:.1f} s di audio in {time.time() - t:.1f} s', flush=True)
+    migliore = None
+    for rip in range(RIPRESE):
+        a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=d, lang_code='italian', temperature=0.9)])
+        scarto, mediana = vivacita(a, m.sample_rate)
+        if migliore is None or scarto > migliore[1]:
+            migliore = (a, scarto, mediana, rip)
+    sf.write(f, migliore[0], m.sample_rate)
+    print(f'{f.name}: {len(migliore[0]) / m.sample_rate:.1f} s, tono {migliore[2]:.0f} Hz ± {migliore[1]:.1f} (ripresa {migliore[3] + 1}/{RIPRESE}), {time.time() - t:.1f} s', flush=True)
 (RADICE / 'voci' / 'testo.txt').write_text(TESTO)

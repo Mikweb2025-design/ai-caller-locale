@@ -82,8 +82,18 @@ const invia = (o) => ws?.readyState === 1 && ws.send(JSON.stringify(o));
 
 function suona(payload) {
   const raw = atob(payload), n = raw.length;
-  const buf = ctx.createBuffer(1, n, 8000), d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = DEC[raw.charCodeAt(i)];
+  // μ-law → float 8 kHz e poi alzo io alla campionatura reale del contesto (iOS Safari
+  // ignora sampleRate:8000 e il suo ricampionatore interno a rate così bassi crea crepe e sibili).
+  const su = ctx.sampleRate, passo = 8000 / su, nSu = Math.max(1, Math.round(n / passo));
+  const buf = ctx.createBuffer(1, nSu, su), d = buf.getChannelData(0);
+  for (let i = 0; i < nSu; i++) {
+    const x = i * passo, j = x | 0, fr = x - j;
+    const a = DEC[raw.charCodeAt(j)] ?? 0, b = j + 1 < n ? DEC[raw.charCodeAt(j + 1)] : a;
+    d[i] = a + (b - a) * fr;
+  }
+  // dissolvenze di 1 ms in coda e in testa: niente click tra un pezzo e l'altro
+  const sv = Math.min(48, nSu >> 3);
+  for (let k = 0; k < sv; k++) { d[k] *= k / sv; d[nSu - 1 - k] *= k / sv; }
   const s = ctx.createBufferSource();
   s.buffer = buf; s.connect(ctx.destination);
   prossimo = Math.max(prossimo, ctx.currentTime + 0.03);
@@ -113,6 +123,7 @@ async function chiama() {
   $('chiama').disabled = true;
   stato('collegamento…');
   ctx = new AudioContext({ sampleRate: 8000 });
+  if (ctx.state === 'suspended') { try { await ctx.resume(); } catch {} }
   let senzaMicrofono = false;
   stato('consenti l\u2019uso del microfono…');
   try {
@@ -135,6 +146,7 @@ async function chiama() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + WS_PATH);
   let tick = 0;
   ws.onopen = () => {
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     invia({ event: 'connected', protocol: 'Call', version: '1.0.0' });
     invia({ event: 'start', streamSid, start: { streamSid, callSid: 'CAweb' + Date.now(), customParameters: { from: 'browser' }, mediaFormat: { encoding: 'audio/x-mulaw', sampleRate: 8000, channels: 1 } } });
     nodo.port.onmessage = ({ data }) => {
