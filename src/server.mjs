@@ -66,8 +66,8 @@ async function leggiCorpo(req) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
-  const json = (codice, o) => { res.writeHead(codice, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
-  const html = (h) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(h); };
+  const json = (codice, o) => { res.writeHead(codice, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
+  const html = (h) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(h); };
   try {
     if (rifiutaSenzaSegreto(req)) { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end(MESSAGGIO_SEGRETO); }
     // Twilio: è arrivata (o è partita) una chiamata → rispondi con le istruzioni TwiML

@@ -118,6 +118,8 @@ export function paginaAdmin({ api, web, feed }) {
       <button type="button" id="vocFerma" class="secondario" disabled>■ Ferma</button>
       <span class="esito" id="vocDurata"></span>
     </div>
+    <p class="aiuto" style="margin-top:8px">Se il microfono non parte, puoi anche <strong>usare una registrazione che hai già sul disco</strong> (wav, mp3, m4a): stesso risultato.</p>
+    <input type="file" id="vocFile" accept="audio/*" style="max-width:340px;background:var(--sfondo)">
     <audio id="vocAscolta" controls style="display:none;margin-top:10px;max-width:340px;width:100%"></audio>
     <div style="margin-top:12px;max-width:420px"><label>Nome della voce <small>(es. Maria)</small></label><input id="vocNome" placeholder="Maria"></div>
     <div style="margin-top:12px"><label>Il testo da leggere durante la registrazione <small>(parlalo scoprendo frase per frase, non cantandolo)</small></label><textarea id="vocTesto" style="min-height:110px"></textarea></div>
@@ -573,6 +575,10 @@ const wavBlob = (pcmBu) => {
 
 $('#vocRegistra').onclick = async () => {
   $('#vocRegEsito').textContent = '';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    $('#vocRegEsito').textContent = '⚠️ questo browser non concede il microfono qui: riprova in Safari o Chrome aggiornati, oppure registra il file fuori e caricatelo con la scelta qua sotto';
+    return;
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     vocPezzi = []; vocT = Date.now();
@@ -591,30 +597,46 @@ $('#vocRegistra').onclick = async () => {
 };
 $('#vocFerma').onclick = () => { if (vocRec && vocRec.state !== 'inactive') vocRec.stop(); };
 
+// in alternativa alla registrazione: riprendo dal file che l'utente sceglie (Safari a volte blocca il microfono)
+$('#vocFile').onchange = async () => {
+  $('#vocRegEsito').textContent = '';
+  const file = $('#vocFile').files[0];
+  if (!file) return;
+  $('#vocDurata').textContent = 'preparo il file…';
+  try {
+    await vocDaAudio(await file.arrayBuffer());
+    $('#vocDurata').textContent = datiVoce.secondi.toFixed(0) + ' s pronti dal file: ascoltala, poi premi Salva';
+  } catch (e) { $('#vocDurata').textContent = ''; $('#vocRegEsito').textContent = '⚠️ ' + e.message; }
+};
+
+async function vocDaAudio(buf) {
+  const scambiata = await new (window.AudioContext || window.webkitAudioContext)().decodeAudioData(buf);
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(scambiata.duration * 24000)), 24000);
+  const src = off.createBufferSource(); src.buffer = scambiata; src.connect(off.destination); src.start();
+  const ridotta = await off.startRendering();
+  const f = ridotta.getChannelData(0);
+  const pcm = new ArrayBuffer(f.length * 2);
+  const dv = new DataView(pcm);
+  for (let i = 0; i < f.length; i++) dv.setInt16(i * 2, Math.max(-32768, Math.min(32767, Math.round(f[i] * 32767))), true);
+  const b = new Uint8Array(pcm);
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  datiVoce = { pcm: btoa(s), secondi: f.length / 24000 };
+  $('#vocAscolta').src = URL.createObjectURL(wavBlob(pcm));
+  $('#vocAscolta').style.display = 'block';
+  $('#vocSalva').disabled = false;
+}
+
 async function vocFinita() {
   clearInterval(vocTimer);
   $('#vocRegistra').disabled = false; $('#vocFerma').disabled = true;
   $('#vocDurata').textContent = 'preparo la registrazione…';
   try {
     const blob = new Blob(vocPezzi, { type: vocRec.mimeType || 'audio/webm' });
-    const scambiata = await new (window.AudioContext || window.webkitAudioContext)().decodeAudioData(await blob.arrayBuffer());
-    const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(scambiata.duration * 24000)), 24000);
-    const src = off.createBufferSource(); src.buffer = scambiata; src.connect(off.destination); src.start();
-    const ridotta = await off.startRendering();
-    const f = ridotta.getChannelData(0);
-    const pcm = new ArrayBuffer(f.length * 2);
-    const dv = new DataView(pcm);
-    for (let i = 0; i < f.length; i++) dv.setInt16(i * 2, Math.max(-32768, Math.min(32767, Math.round(f[i] * 32767))), true);
-    const b = new Uint8Array(pcm);
-    let s = '';
-    for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
-    datiVoce = { pcm: btoa(s), secondi: f.length / 24000 };
+    await vocDaAudio(await blob.arrayBuffer());
     $('#vocDurata').textContent = datiVoce.secondi.toFixed(0) + ' s registrati: ascoltala, poi premi Salva';
-    $('#vocAscolta').src = URL.createObjectURL(wavBlob(pcm));
-    $('#vocAscolta').style.display = 'block';
-    $('#vocSalva').disabled = false;
   } catch (e) {
-    $('#vocDurata').textContent = ''; $('#vocRegEsito').textContent = '⚠️ ' + e.message;
+    $('#vocDurata').textContent = ''; $('#vocRegEsito').textContent = '⚠️ non riesco a leggere la registrazione (' + e.message + '): salvala sul disco e caricatela con la scelta del file qua sopra';
   }
 }
 $('#vocSalva').onclick = async () => {
