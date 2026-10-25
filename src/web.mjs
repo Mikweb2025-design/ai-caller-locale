@@ -14,7 +14,7 @@ export function paginaWeb({ ws, admin }) {
   ${temaCss(
     ':root { --sfondo:#f6f5f2; --testo:#1d1d1b; --tenue:#6b6a66; --oro:#c9a227; --bordo:#dedbd3; --carta:#fff; --rosso:#c0392b; --verde:#2e8b57; }',
     ':root { --sfondo:#141413; --testo:#f1efe9; --tenue:#a19f98; --oro:#c9a227; --bordo:#33322f; --carta:#1e1e1c; --rosso:#c0392b; --verde:#2e8b57; }',
-    ['oro'],
+    ['oro', 'verde'],
   )}
   * { box-sizing:border-box; }
   html, body { background:var(--sfondo); }
