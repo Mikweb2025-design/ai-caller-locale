@@ -92,6 +92,10 @@ export function paginaAdmin({ api, web, feed }) {
       <div><label>Nome</label><input data-k="receptionist.nome"></div>
       <div><label>Genere <small>(per l'italiano: pronto/pronta)</small></label><select data-k="receptionist.genere"><option value="m">uomo</option><option value="f">donna</option></select></div>
     </div>
+    <h2 style="margin-top:18px">Lingue</h2>
+    <p class="aiuto">L'italiano c'è sempre. Con il tedesco il receptionist risponde nella lingua di chi chiama (italiano o Deutsch), anche dentro la stessa telefonata.</p>
+    <label class="check"><input type="checkbox" data-k="lingue.tedesco"> Rispondi anche in tedesco</label>
+    <div style="margin-top:12px"><label>Saluto in tedesco <small>(si aggiunge a quello italiano; {nome} = nome del receptionist)</small></label><input data-k="lingue.salutoTedesco"></div>
     <div style="margin-top:12px"><label>Saluto <small>(vuoto = "&lt;attività&gt;, buongiorno! Sono &lt;nome&gt;, mi dica.")</small></label><input data-k="receptionist.saluto"></div>
     <div style="margin-top:12px"><label>Istruzioni in più <small>(in italiano, es. "Il venerdì pomeriggio niente revisioni")</small></label><textarea data-k="receptionist.note"></textarea></div>
   </section>

@@ -10,7 +10,7 @@ import { ChiamataTwilio } from './twilio-stream.mjs';
 import { gestisciChiamata, preriscalda, RIEMPITIVO } from './chiamata.mjs';
 import { paginaPannello } from './pannello.mjs';
 import { paginaWeb } from './web.mjs';
-import { saluto } from './persona.mjs';
+import { salutoSegmenti } from './persona.mjs';
 import { frasePronta } from './voce.mjs';
 import { paginaAdmin } from './admin.mjs';
 import { cercaCalendari, SERVIZI } from './caldav.mjs';
@@ -22,7 +22,7 @@ import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impost
 import { appuntamenti, annulla, sposta, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
 
 const segreto = SEGRETO;
-if (urlPubblico() && !process.env.SEGRETO) console.warn('⚠️ Manca SEGRETO nel .env: il webhook e il pannello hanno un indirizzo facile da indovinare.');
+if (urlPubblico() && !process.env.SEGRETO) console.error('⚠️ URL pubblico impostato ma manca SEGRETO nel .env: il server rifiuta le richieste da internet finché non lo metti.');
 const gettoni = new Map(); // gettone monouso → scadenza
 
 function nuovoGettone() {
@@ -32,6 +32,15 @@ function nuovoGettone() {
 }
 
 const xml = (s) => String(s ?? '').replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+
+// Senza SEGRETO il server vale solo per questo computer: richieste da un altro nome (Host), da un tunnel
+// o da un proxy (che aggiungono intestazioni X-Forwarded-*) vengono rifiutate, così pannello e API
+// con le tue chiavi non finiscono per sbaglio su internet.
+const NOMI_LOCALI = new Set(['localhost', '127.0.0.1', '[::1]']);
+const daProxy = (req) => ['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'forwarded'].some((h) => req.headers[h]);
+const ospiteLocale = (req) => NOMI_LOCALI.has((req.headers.host || '').replace(/:\d+$/, '').toLowerCase());
+const rifiutaSenzaSegreto = (req) => segreto === 'locale' && (daProxy(req) || !ospiteLocale(req));
+const MESSAGGIO_SEGRETO = 'Questo server non ha un SEGRETO e risponde solo a localhost. Per usarlo da internet metti SEGRETO=una-stringa-lunga-a-caso nel file .env e riavvia.\nThis server has no SECRET and only answers on localhost. To use it over the internet set SECRET in .env (SEGRETO=a-long-random-string) and restart.\n';
 
 async function leggiCorpo(req) {
   let s = '';
@@ -44,6 +53,7 @@ const server = http.createServer(async (req, res) => {
   const json = (codice, o) => { res.writeHead(codice, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
   const html = (h) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(h); };
   try {
+    if (rifiutaSenzaSegreto(req)) { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end(MESSAGGIO_SEGRETO); }
     // Twilio: è arrivata (o è partita) una chiamata → rispondi con le istruzioni TwiML
     if (req.method === 'POST' && url.pathname === `/twilio/${segreto}/voce`) {
       const p = Object.fromEntries(new URLSearchParams(await leggiCorpo(req)));
@@ -190,6 +200,7 @@ const server = http.createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
+  if (rifiutaSenzaSegreto(req)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); return socket.destroy(); }
   const [, primo, tipo, gettone] = new URL(req.url, 'http://x').pathname.split('/');
   const locale = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !req.headers['cf-connecting-ip'];
   const valido = tipo === 'web'
@@ -206,13 +217,14 @@ server.on('upgrade', (req, socket, head) => {
 setInterval(() => { for (const [g, scade] of gettoni) if (scade < Date.now()) gettoni.delete(g); }, 60000).unref();
 
 // il saluto e il riempitivo si preparano subito, così la chiamata parte senza attese
-const prepara = () => Promise.all([frasePronta(saluto()), ...(CONFIG.riempitivoSecondi >= 0 ? [frasePronta(RIEMPITIVO)] : [])])
+const prepara = () => Promise.all([...salutoSegmenti().map((x) => frasePronta(x.testo, x.lingua)), ...(CONFIG.riempitivoSecondi >= 0 ? [frasePronta(RIEMPITIVO)] : [])])
   .then(() => console.log('🔊 saluto pronto'))
   .catch(() => { console.log('⏳ motore vocale non ancora acceso (npm run motore), riprovo...'); setTimeout(prepara, 5000).unref(); });
 prepara();
-alCambio(() => { frasePronta(saluto()).catch(() => {}); }); // saluto nuovo: si prepara subito
+alCambio(() => { for (const x of salutoSegmenti()) frasePronta(x.testo, x.lingua).catch(() => {}); }); // saluto nuovo: si prepara subito
 
-server.listen(CONFIG.porta, () => {
+// Di default solo questo computer. HOST=0.0.0.0 per aprire alla rete (dietro un proxy con https e con SEGRETO).
+server.listen(CONFIG.porta, process.env.HOST || '127.0.0.1', () => {
   console.log(`Receptionist in ascolto sulla porta ${CONFIG.porta}`);
   console.log(`Chiamata dal browser: http://localhost:${CONFIG.porta}/${segreto === 'locale' ? '' : `web/${segreto}`}`);
   console.log(`Impostazioni:        http://localhost:${CONFIG.porta}/admin${segreto === 'locale' ? '' : `/${segreto}`}`);

@@ -52,5 +52,15 @@ export const COPIONI = {
     'Sì, è tutto. Le mando il logo per email allora.',
     'No, a posto così, grazie mille. Buona giornata!',
   ],
+  // cliente di lingua tedesca: il receptionist deve rispondere in tedesco per tutta la chiamata
+  tedesco: [
+    'Guten Tag! Ich hätte gern Informationen zu Lasergravuren.',
+    'Wir brauchen zweihundert Schlüsselanhänger aus Holz mit unserem Logo, für eine Firmenveranstaltung.',
+    'Das Logo habe ich als PDF. Geht das?',
+    'Dienstag um zehn Uhr passt perfekt.',
+    'Mein Name ist Anna Weber, von Weber Events.',
+    'Ja, das ist alles. Ich schicke Ihnen das Logo per E-Mail.',
+    'Nein danke. Auf Wiederhören!',
+  ],
 };
 export const COPIONE = COPIONI.base;

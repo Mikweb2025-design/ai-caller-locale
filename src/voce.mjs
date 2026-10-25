@@ -39,11 +39,11 @@ export async function trascrivi(pcm) {
 }
 
 // Legge una frase ad alta voce: chiama alPezzo(μ-law) man mano che l'audio è pronto.
-export async function pronuncia(testo, alPezzo, { segnale, voce } = {}) {
+export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it' } = {}) {
   const r = await fetch(`${CONFIG.motore}/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ testo, voce }),
+    body: JSON.stringify({ testo, voce, lingua }),
     signal: segnale,
   });
   if (!r.ok) throw new Error(`motore /tts ${r.status}`);
@@ -58,12 +58,12 @@ export async function pronuncia(testo, alPezzo, { segnale, voce } = {}) {
 
 // Frasi fisse (saluto, riempitivo): sintetizzate una volta sola e tenute in memoria.
 // Si ascoltano subito: se la voce ha mangiato parole o è andata avanti a vuoto, si rifanno.
-const parole = (t) => t.toLowerCase().normalize('NFD').replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean);
-async function sintetizzaBene(testo, tentativi = 4) {
+const parole = (t) => t.toLowerCase().replace(/ß/g, 'ss').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean);
+async function sintetizzaBene(testo, lingua, tentativi = 4) {
   let migliore = null;
   for (let i = 0; i < tentativi; i++) {
     const pezzi = [];
-    await pronuncia(testo, (p) => pezzi.push(p));
+    await pronuncia(testo, (p) => pezzi.push(p), { lingua });
     const audio = Buffer.concat(pezzi);
     const sentite = new Set(parole((await trascrivi(daMulaw(audio))).testo));
     const attese = parole(testo);
@@ -75,7 +75,8 @@ async function sintetizzaBene(testo, tentativi = 4) {
 }
 
 const cache = new Map();
-export async function frasePronta(testo) {
-  if (!cache.has(testo)) cache.set(testo, sintetizzaBene(testo).catch((e) => { cache.delete(testo); throw e; }));
-  return cache.get(testo);
+export async function frasePronta(testo, lingua = 'it') {
+  const k = `${lingua}|${testo}`;
+  if (!cache.has(k)) cache.set(k, sintetizzaBene(testo, lingua).catch((e) => { cache.delete(k); throw e; }));
+  return cache.get(k);
 }

@@ -2,7 +2,7 @@
 // Claude Code e legge la risposta con Qwen3-TTS, una frase alla volta mentre Claude scrive.
 // Funziona uguale per Twilio e per la chiamata dal browser (stesso protocollo Media Streams).
 import { CONFIG } from './config.mjs';
-import { istruzioni, saluto } from './persona.mjs';
+import { istruzioni, salutoSegmenti, salutoCompleto } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
 import { confermaAppuntamento } from './strumenti.mjs';
 import { Cervello } from './cervello.mjs';
@@ -35,8 +35,16 @@ function taglio(s, primo = false) {
 // in inglese ("Yeah, we're here"). Se la frase è fatta soprattutto di parole inglesi, non è il cliente.
 const INGLESE = new Set("yeah yes yep so uh um oh the a an you and hmm we we're here there that that's it it's is are was just why because with what i i'm my me your this of to in on for be have do not but all can will like know right well hi hello bye thank thanks".split(' '));
 const ITALIANO = /[àèéìòù]|\b(che|non|per|sono|il|la|lo|gli|le|un|una|di|da|con|mi|ti|si|ci|ok|okay|no|ciao|grazie|buongiorno|pronto|vorrei|appuntamento|va|bene)\b/i;
+// Parole che distinguono il tedesco dall'italiano (non quelle uguali nelle due lingue).
+const TEDESCO = /[äöüß]|\b(ich|sie|wir|ihr|ihre|ihnen|nicht|und|der|die|das|ein|eine|ist|sind|haben|habe|bitte|danke|guten|tag|termin|gerne|ja|nein|wann|möchte|moechte|können|koennen|kann|uhr|montag|dienstag|mittwoch|donnerstag|freitag|auch|dann|wie|für|mit|noch|hier|zu|von|bei|dem|den|auf|aber|oder|gut|schön|hallo|wieder|sehen|ihnen|mir|mich|dich|machen|brauche|brauchen|wollen|will)\b/gi;
+const SOLO_ITALIANO = /[àèéìòù]|\b(che|non|per|sono|il|la|lo|gli|le|un|una|di|con|mi|ti|si|ci|ho|alle|ma|come|quale|va|bene|grazie|buongiorno|perfetto|certo|vorrei|appuntamento|mattina|pomeriggio)\b/gi;
+export function rilevaLingua(testo, precedente = 'it') {
+  const de = (testo.match(TEDESCO) || []).length, it = (testo.match(SOLO_ITALIANO) || []).length;
+  if (de === 0 && it === 0) return precedente; // frase cortissima: resta nella lingua di prima
+  return de > it ? 'de' : 'it';
+}
 export function nonItaliano(frase) {
-  if (ITALIANO.test(frase)) return false;
+  if (ITALIANO.test(frase) || /[äöüß]|\b(ich|wir|sie|nicht|und|bitte|danke|guten|termin|gerne|ja|nein|haben)\b/i.test(frase)) return false;
   const parole = frase.toLowerCase().replace(/[^a-z' ]/g, ' ').split(/\s+/).filter(Boolean);
   return parole.length > 0 && parole.filter((p) => INGLESE.has(p)).length / parole.length >= 0.5;
 }
@@ -100,11 +108,14 @@ export function gestisciChiamata(chiamata) {
     chiamata.marca();
   }
 
+  let linguaVoce = 'it';
   function leggi(frase) {
     const segnale = annulla.signal;
+    linguaVoce = rilevaLingua(frase, linguaVoce);
+    const lingua = linguaVoce;
     coda = coda.then(async () => {
       if (segnale.aborted) return;
-      try { await pronuncia(frase, (p) => { if (!segnale.aborted) inviaAudio(p); }, { segnale }); } catch (e) { if (!segnale.aborted) chiamata.log('errore voce', e.message); }
+      try { await pronuncia(frase, (p) => { if (!segnale.aborted) inviaAudio(p); }, { segnale, lingua }); } catch (e) { if (!segnale.aborted) chiamata.log('errore voce', e.message); }
     });
   }
 
@@ -179,11 +190,11 @@ export function gestisciChiamata(chiamata) {
     inAttesa.delete(chiamata.callSid);
     cervelloPronto = pronto;
     // il saluto parte subito, Claude intanto si avvia
-    const s = saluto();
+    const s = salutoCompleto();
     testo('receptionist', s);
     chiamata.log(`🤖 ${s}`);
     const t = Date.now();
-    const audio = await frasePronta(s);
+    const audio = Buffer.concat(await Promise.all(salutoSegmenti().map((x) => frasePronta(x.testo, x.lingua))));
     chiamata.log(`⏱ saluto pronto in ${Date.now() - t} ms`);
     inviaAudio(audio);
     cervello = await pronto;

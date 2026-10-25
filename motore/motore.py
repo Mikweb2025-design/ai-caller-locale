@@ -133,11 +133,14 @@ def a_8k(audio):
     return (np.clip(a, -1, 1) * 32767).astype('<i2').tobytes()
 
 
-def parla(testo, nome_voce=None):
+LINGUE = {'it': 'italian', 'de': 'german'}  # lingua della frase → lingua di Qwen3-TTS
+
+
+def parla(testo, nome_voce=None, lingua='italian'):
     # tetto all'audio: il codec fa 12 passi al secondo e una persona dice almeno ~8 caratteri al secondo.
     # Senza tetto, ogni tanto il modello non si ferma più e genera minuti di silenzio o rumore.
     massimo = int(12 * (len(testo) / 8 + 1.5))
-    kw = dict(text=testo, lang_code='italian', stream=True, streaming_interval=0.25, temperature=TTS_TEMPERATURA,
+    kw = dict(text=testo, lang_code=lingua, stream=True, streaming_interval=0.25, temperature=TTS_TEMPERATURA,
               max_tokens=massimo)
     if TTS_RIF_AUDIO:
         kw.update(ref_audio=TTS_RIF_AUDIO, ref_text=TTS_RIF_TESTO)
@@ -211,7 +214,7 @@ class Gestore(BaseHTTPRequestHandler):
             self.end_headers()
             try:
                 with blocco_tts:
-                    for pezzo in parla(richiesta.get('testo', ''), richiesta.get('voce')):
+                    for pezzo in parla(richiesta.get('testo', ''), richiesta.get('voce'), LINGUE.get(richiesta.get('lingua'), 'italian')):
                         self.wfile.write(f'{len(pezzo):X}\r\n'.encode() + pezzo + b'\r\n')
                         self.wfile.flush()
                 self.wfile.write(b'0\r\n\r\n')
