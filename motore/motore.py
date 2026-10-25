@@ -32,6 +32,9 @@ CAMPIONE = RADICE / 'voci' / 'receptionist.wav'
 TTS_MODELLO = os.environ.get('TTS_MODELLO') or ('mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit' if CAMPIONE.exists()
                                                 else 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit')
 TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.6)  # più bassa = più piatta, più alta = più espressiva (e meno prevedibile)
+TTS_TOP_P = float(os.environ.get('TTS_TOP_P') or 0.92)  # limita gli esiti improbabili senza rendere la voce monotona
+TTS_TOP_K = int(os.environ.get('TTS_TOP_K') or 40)
+TTS_RIPETIZIONE = float(os.environ.get('TTS_RIPETIZIONE') or 1.08)
 TTS_VOCE = os.environ.get('TTS_VOCE', 'ryan')
 TTS_ISTRUZIONI = os.environ.get('TTS_ISTRUZIONI', '') or None
 # clonazione da un campione (solo con i modelli "Base"): file wav a 24 kHz e la sua trascrizione
@@ -141,8 +144,12 @@ def parla(testo, nome_voce=None, lingua='italian', rif=None):
     # Senza tetto, ogni tanto il modello non si ferma più e genera minuti di silenzio o rumore.
     massimo = int(12 * (len(testo) / 8 + 1.5))
     kw = dict(text=testo, lang_code=lingua, stream=True, streaming_interval=0.25, temperature=TTS_TEMPERATURA,
-              max_tokens=massimo)
-    if rif:
+              top_p=TTS_TOP_P, top_k=TTS_TOP_K, repetition_penalty=TTS_RIPETIZIONE, max_tokens=massimo)
+    if 'CustomVoice' in TTS_MODELLO:
+        # Le voci integrate accettano istruzioni di stile a ogni battuta; un eventuale campione scelto
+        # nel pannello non va passato, perché CustomVoice non è un modello di clonazione.
+        kw.update(voice=nome_voce or TTS_VOCE, instruct=TTS_ISTRUZIONI)
+    elif rif:
         # campione scelto dal pannello: (percorso, trascrizione); se non ha trascrizione propria, quella globale
         kw.update(ref_audio=rif[0], ref_text=rif[1] or TTS_RIF_TESTO or '')
     elif TTS_RIF_AUDIO:

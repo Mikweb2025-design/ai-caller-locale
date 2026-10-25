@@ -23,19 +23,6 @@ function separa(testo) {
   return { azioni, parlato };
 }
 
-// Dove si può tagliare la frase per mandarla alla voce: fine frase, oppure una virgola se è lunga.
-// Pezzi troppo corti no: Qwen3-TTS sui frammenti di poche parole ogni tanto sbaglia.
-// Il primo pezzo di una risposta può partire già a una virgola: si comincia a parlare prima.
-function taglio(s, primo = false) {
-  // I marcatori stanno in fondo alla risposta: da "<<" in poi non si legge niente, si aspetta la fine.
-  const marcatore = s.search(/<<|<$/);
-  if (marcatore >= 0) return s.slice(0, marcatore).trim() ? marcatore : -1;
-  const m = [...s.matchAll(/[.!?…:;](?=\s)|\.\.\.(?=\s)/g)].pop();
-  if (m && m.index >= 20) return m.index + m[0].length;
-  if (s.length > (primo ? 40 : 90)) { const v = s.lastIndexOf(', '); if (v > 30) return v + 1; }
-  return -1;
-}
-
 // Parakeet sceglie la lingua da solo: eco dell'altoparlante e rumori diventano spesso frasette
 // in inglese ("Yeah, we're here"). Se la frase è fatta soprattutto di parole inglesi, non è il cliente.
 const INGLESE = new Set("yeah yes yep so uh um oh the a an you and hmm we we're here there that that's it it's is are was just why because with what i i'm my me your this of to in on for be have do not but all can will like know right well hi hello bye thank thanks".split(' '));
@@ -166,24 +153,20 @@ export function gestisciChiamata(chiamata) {
     const emetti = (grezzo, n) => {
       const parlato = regolaIntercalare(grezzo, n).trim();
       if (!parlato) return;
-      testoTurno += `${testoTurno ? ' ' : ''}${parlato}`;
+      testoTurno = parlato;
       leggi(parlato);
     };
     cervello.alTesto = (pezzo, n) => {
       if (n !== turno) return; // risposta a una frase ormai superata
       if (!bufferTesto && !giaDetto && fineTurno) chiamata.log(`🧠 primo testo di Claude dopo ${Date.now() - fineTurno} ms`);
       bufferTesto += pezzo;
-      let i;
-      while ((i = taglio(bufferTesto, !giaDetto)) > 0) {
-        giaDetto = true;
-        const { parlato } = separa(bufferTesto.slice(0, i));
-        bufferTesto = bufferTesto.slice(i).trimStart();
-        emetti(parlato, n);
-      }
+      giaDetto = true;
     };
     cervello.allaFine = async (completo, n) => {
       if (n !== turno) return;
-      const { parlato } = separa(bufferTesto);
+      // Una sola sintesi per tutta la battuta: Qwen conserva l'arco naturale tra virgole,
+      // punti e domanda. Spezzare ogni frase faceva ripartire il tono da zero e suonava robotico.
+      const { parlato } = separa(completo);
       bufferTesto = '';
       emetti(parlato, n);
       const { azioni } = separa(completo);

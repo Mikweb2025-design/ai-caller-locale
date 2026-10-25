@@ -38,11 +38,13 @@ DESCRIZIONI = {
         "A 32-year-old Italian woman, warm and a little playful, from northern Italy, chatting amiably with a customer she likes on the phone. Fully native Italian, natural accent, soft warm voice with a fine smile in the tone. Italian conversational melody, expressive emphasis, human rhythm with natural breathing. Professional but with charm, never cold, never robotic, never flat, never reading, no English pronunciation.",
     ],
     'maria-naturale': (
-        "A 32-year-old Italian receptionist from Milan speaking calmly with one customer on the phone. "
-        "Fully native Italian, a soft medium-low voice and a light northern Italian accent. Restrained, everyday "
-        "conversational delivery: relaxed pace, subtle smile, modest pitch variation and small natural breaths. "
-        "She follows commas, full stops and questions with realistic pauses, without overacting. No advertising tone, "
-        "no sing-song melody, no theatrical emotion, no exaggerated smile, no newsreader style, no robotic cadence."
+        "A 30-year-old Italian receptionist from Milan speaking to one real customer on the phone, not performing. "
+        "Fully native Italian, warm clear female voice and a light northern Italian accent. She sounds attentive, "
+        "quick-minded and spontaneously friendly: medium conversational pace, gentle emphasis on useful words, "
+        "small changes of rhythm, tiny natural breaths, a question that really sounds like a question, and an occasional "
+        "subtle smile. Human and present, never dull or overly controlled. Clear but not polished like a voice-over. "
+        "No advertising tone, no theatre, no exaggerated cheerfulness, no sing-song melody, no newsreader style, "
+        "no perfect metronomic rhythm and no robotic cadence."
     ),
 }
 des = DESCRIZIONI.get(TIPO)
@@ -50,8 +52,8 @@ DESCRIZIONE = des[0] if isinstance(des, list) else des
 PREFISSO = 'proposta' if TIPO == 'maschile' else ('voce-f' if isinstance(des, list) else f'proposta-{TIPO}')
 # Un riferimento breve e coerente clona meglio ritmo e timbro. Evitiamo intercalari e frasi isolate
 # come "Bene.", che il modello tenderebbe a ripetere nelle telefonate.
-TESTO = ("Buongiorno, mi dica pure. Sì, ho capito. Per martedì c'è un posto alle nove; "
-         "in alternativa, mercoledì alle due del pomeriggio. Quale preferisce?")
+TESTO = ("Lasercamp, buongiorno, sono Maria. Ah, certo, mi dica pure. Per giovedì posso proporle le dieci e mezza; "
+         "venerdì, invece, ci sarebbe posto alle tre. Quale le viene meglio?")
 
 m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit")
 (RADICE / 'voci').mkdir(exist_ok=True)
@@ -82,8 +84,10 @@ for i in range(1, n + 1):
     f = RADICE / 'voci' / f'{PREFISSO}-{i}.wav'
     migliore = None
     for rip in range(RIPRESE):
-        temperatura = float(os.environ.get('DESIGN_TEMPERATURA', '0.72'))
-        a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=d, lang_code='italian', temperature=temperatura)])
+        temperatura = float(os.environ.get('DESIGN_TEMPERATURA', '0.74'))
+        top_p = float(os.environ.get('DESIGN_TOP_P', '0.92'))
+        a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=d, lang_code='italian',
+                           temperature=temperatura, top_p=top_p, top_k=40, repetition_penalty=1.08)])
         scarto, mediana = vivacita(a, m.sample_rate)
         if migliore is None or scarto > migliore[1]:
             migliore = (a, scarto, mediana, rip)

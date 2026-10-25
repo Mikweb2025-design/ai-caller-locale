@@ -134,6 +134,8 @@ Le opzioni principali del `.env`:
 | `CLAUDE_IMPEGNO` | `low` | Livello di `--effort`; `low` dà il primo testo più in fretta |
 | `STT_MODELLO` | `mlx-community/parakeet-tdt-0.6b-v3` | Oppure un modello faster-whisper (`small`, `large-v3-turbo`, ...) |
 | `TTS_TEMPERATURA` | `0.6` nel codice | Più bassa = voce più piatta e regolare, più alta = più espressiva e meno prevedibile |
+| `TTS_TOP_P` / `TTS_TOP_K` | `0.92` / `40` | Mantengono variazioni naturali escludendo le cadenze meno probabili |
+| `TTS_RIPETIZIONE` | `1.08` | Riduce ripetizioni, balbettii e code vocali |
 | `VAD_SOGLIA` | `700` | Energia sopra cui è voce (alzala con rumore di fondo) |
 | `VAD_SILENZIO_MS` | `750` | Silenzio dopo cui chi chiama ha finito |
 | `VAD_INIZIO_MS` / `VAD_MINIMO_MS` | `120` / `250` | Voce continua per dire "sta parlando" / frasi più corte di così sono rumore |

@@ -134,6 +134,8 @@ The main `.env` options:
 | `CLAUDE_IMPEGNO` | `low` | `--effort` level; `low` gives the fastest first text |
 | `STT_MODELLO` | `mlx-community/parakeet-tdt-0.6b-v3` | Or a faster-whisper model (`small`, `large-v3-turbo`, ...) |
 | `TTS_TEMPERATURA` | `0.6` in the code | Lower = flatter and steadier voice, higher = more expressive and less predictable |
+| `TTS_TOP_P` / `TTS_TOP_K` | `0.92` / `40` | Keep natural variation while excluding unlikely cadences |
+| `TTS_RIPETIZIONE` | `1.08` | Reduces repeated sounds, stutters and trailing speech |
 | `VAD_SOGLIA` | `700` | Energy above which it is voice (raise it with background noise) |
 | `VAD_SILENZIO_MS` | `750` | Silence after which the caller has finished |
 | `VAD_INIZIO_MS` / `VAD_MINIMO_MS` | `120` / `250` | Continuous voice needed to say "they are speaking" / sentences shorter than this are noise |
