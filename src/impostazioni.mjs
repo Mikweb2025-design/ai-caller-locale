@@ -1,11 +1,11 @@
 // Le impostazioni che si cambiano dal pannello admin: l'attività, gli orari, il calendario,
 // le email e gli SMS. Stanno in dati/impostazioni.json; quello che manca prende i valori qui sotto.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { RADICE } from './config.mjs';
 
 export const CARTELLA_DATI = join(RADICE, 'dati');
-mkdirSync(CARTELLA_DATI, { recursive: true });
+mkdirSync(CARTELLA_DATI, { recursive: true, mode: 0o700 });
 const FILE = join(CARTELLA_DATI, 'impostazioni.json');
 
 export const GIORNI = ['lunedi', 'martedi', 'mercoledi', 'giovedi', 'venerdi', 'sabato', 'domenica'];
@@ -52,6 +52,13 @@ export const PREDEFINITE = {
     propostePerChiamata: 3, // orari da proporre al cliente
     calendariOccupato: '', // URL iCal (ICS) privati, uno per riga: i loro impegni bloccano gli orari
   },
+  // il cervello: quale servizio risponde alle telefonate, e una riserva (servizio '' = nessuna)
+  cervello: {
+    principale: { servizio: 'claude', url: '', chiave: '', modello: process.env.CLAUDE_MODELLO || 'haiku', impegno: process.env.CLAUDE_IMPEGNO || 'low' },
+    riserva: { servizio: '', url: '', chiave: '', modello: '', impegno: '' },
+  },
+  // lingue: l'italiano c'è sempre; con il tedesco il receptionist risponde nella lingua di chi chiama
+  lingue: { tedesco: false, salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?' },
   // calendari CalDAV collegati: { id, servizio, nome, url, utente, password, calendario, calendarioNome, leggi, scrivi }
   calendari: [],
   email: {
@@ -104,6 +111,13 @@ export function salvaImpostazioni(nuove) {
   // la password non torna mai al browser: se arriva vuota, resta quella di prima
   if (nuove?.email && !nuove.email.password) nuove.email.password = attuali.email.password;
   if (nuove?.twilio && !nuove.twilio.apiSecret) nuove.twilio.apiSecret = nuove.twilio.accountSid === '' ? '' : attuali.twilio?.apiSecret || ''; // senza account niente token
+  for (const slot of ['principale', 'riserva']) {
+    const n = nuove?.cervello?.[slot];
+    if (n && !n.chiave) {
+      const vecchio = attuali.cervello?.[slot];
+      if (vecchio && vecchio.servizio === n.servizio) n.chiave = vecchio.chiave || ''; // stesso servizio: la chiave resta
+    }
+  }
   if (Array.isArray(nuove?.calendari)) {
     for (const c of nuove.calendari) {
       c.id ||= Math.random().toString(36).slice(2, 10);
@@ -115,7 +129,9 @@ export function salvaImpostazioni(nuove) {
   if (Array.isArray(nuove?.calendari)) tutte.calendari = nuove.calendari; // l'elenco arriva sempre intero
   for (const g of GIORNI) tutte.orari[g] = String(tutte.orari[g] || '').trim();
   delete tutte.twilio.segretoImpostato;
-  writeFileSync(FILE, JSON.stringify(tutte, null, 2));
+  for (const slot of ['principale', 'riserva']) delete tutte.cervello[slot].chiaveImpostata;
+  writeFileSync(FILE, JSON.stringify(tutte, null, 2), { mode: 0o600 }); // contiene chiavi e password: solo per te
+  try { chmodSync(FILE, 0o600); } catch {}
   cache = tutte;
   for (const f of ascoltatori) try { f(tutte); } catch {}
   return tutte;
@@ -128,6 +144,7 @@ export function impostazioniPubbliche() {
   i.email.password = '';
   i.twilio.segretoImpostato = Boolean(i.twilio.apiSecret || process.env.TWILIO_API_SECRET);
   i.twilio.apiSecret = '';
+  for (const slot of ['principale', 'riserva']) { i.cervello[slot].chiaveImpostata = Boolean(i.cervello[slot].chiave); i.cervello[slot].chiave = ''; }
   for (const c of i.calendari || []) { c.passwordImpostata = Boolean(c.password); c.password = ''; }
   return i;
 }

@@ -15,6 +15,9 @@ import { frasePronta } from './voce.mjs';
 import { paginaAdmin } from './admin.mjs';
 import { cercaCalendari, SERVIZI } from './caldav.mjs';
 import { avviaImportazione, statoImportazione } from './sito.mjs';
+import { SERVIZI_CERVELLO, elencaModelli, provaConversazione } from './cervello.mjs';
+import { istruzioni } from './persona.mjs';
+import { postiPerIstruzioni } from './agenda.mjs';
 import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
 import { appuntamenti, annulla, sposta, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
 
@@ -94,6 +97,18 @@ const server = http.createServer(async (req, res) => {
       }
       // CalDAV: servizi noti, ricerca dei calendari di un conto, prova di lettura
       if (percorso === '/caldav/servizi') return json(200, SERVIZI);
+      // Cervello: servizi pronti, elenco modelli, prova di una conversazione (nessun appuntamento viene scritto)
+      if (percorso === '/cervello/servizi') return json(200, SERVIZI_CERVELLO);
+      if (percorso.startsWith('/cervello/') && req.method === 'POST') {
+        const slot = corpo.slot === 'riserva' ? 'riserva' : 'principale';
+        const cfg = { ...corpo.config };
+        const salvato = impostazioni().cervello?.[slot];
+        if (!cfg.chiave && salvato && salvato.servizio === cfg.servizio) cfg.chiave = salvato.chiave; // chiave già salvata
+        try {
+          if (percorso === '/cervello/modelli') return json(200, { modelli: await elencaModelli(cfg) });
+          if (percorso === '/cervello/prova') { const posti = await postiPerIstruzioni(); return json(200, await provaConversazione(cfg, istruzioni({ posti }), { posti })); }
+        } catch (e) { return json(400, { errore: e.message }); }
+      }
       // Importa dal sito: parte un lavoro, il pannello ne chiede lo stato
       if (percorso === '/sito/importa' && req.method === 'POST') {
         if (!String(corpo.url || '').trim()) return json(400, { errore: "scrivi l'indirizzo del sito" });

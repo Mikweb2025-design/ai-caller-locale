@@ -130,6 +130,13 @@ export function paginaAdmin({ api, web, feed }) {
     <div class="riga" style="margin-top:10px"><button class="secondario" type="button" id="verificaCal">Verifica calendari</button><span id="esitoCal" class="aiuto" style="margin:0"></span></div>
   </section>
 
+  <section data-scheda="Cervello">
+    <h2>Il cervello</h2>
+    <p class="aiuto">Il servizio che capisce il cliente e scrive le risposte. Puoi usare <strong>Claude</strong> oppure un servizio gratuito (Groq, Gemini, OpenRouter, Cerebras…) incollando la sua chiave. L'account "chat" gratuito di ChatGPT o Gemini non si può collegare: serve la chiave API del servizio.</p>
+    <p class="aiuto"><strong>Privacy:</strong> in ogni chiamata nomi, telefoni ed email dei clienti passano dal servizio scelto. I piani gratuiti possono usare i dati per addestrare i modelli: leggi le loro condizioni.</p>
+    <div id="cervelli"></div>
+  </section>
+
   <section data-scheda="Telefono">
     <h2>Numero di telefono (Twilio)</h2>
     <p class="aiuto">Per rispondere a un numero vero: un account Twilio <strong>non di prova</strong> (in prova Twilio legge un avviso a ogni chiamata), un numero, e questo server raggiungibile da internet in https (VPS, oppure <code>cloudflared tunnel --url http://localhost:5050</code>).</p>
@@ -203,6 +210,56 @@ async function chiedi(percorso, opz = {}) {
 }
 
 let servizi = {};
+let serviziCervello = {};
+const NOMI_SLOT = { principale: 'Principale', riserva: 'Riserva (facoltativa): risponde se il principale sbaglia, tarda o ha raggiunto il limite' };
+function schedaCervello(slot, c = {}) {
+  const d = document.createElement('div');
+  d.className = 'conto cervello'; d.dataset.slot = slot;
+  const opz = (slot === 'riserva' ? '<option value="">— nessuna riserva —</option>' : '') + Object.entries(serviziCervello).map(([k, v]) => '<option value="' + k + '"' + (k === c.servizio ? ' selected' : '') + '>' + v.nome + '</option>').join('');
+  d.innerHTML = '<h2 style="font-size:15px">' + NOMI_SLOT[slot] + '</h2><div class="griglia">'
+    + '<div><label>Servizio</label><select class="k-servizio">' + opz + '</select></div>'
+    + '<div class="k-urlbox"><label>Indirizzo</label><input class="k-url"></div>'
+    + '<div><label class="k-chiavenome">Chiave</label><input class="k-chiave" type="password" autocomplete="new-password" placeholder="lascia vuoto per non cambiarla"></div>'
+    + '<div><label>Modello <small>(Elenca modelli lo chiede al servizio)</small></label><div class="riga"><input class="k-modello" list="mod-' + slot + '"><datalist id="mod-' + slot + '"></datalist><button class="secondario k-elenca" type="button" style="padding:7px 12px">Elenca</button></div></div>'
+    + '<div class="k-impbox"><label>Impegno <small>(basso = risponde prima)</small></label><select class="k-impegno"><option value="low">basso</option><option value="medium">medio</option><option value="high">alto</option></select></div>'
+    + '</div><p class="aiuto k-aiuto" style="margin:8px 0"></p>'
+    + '<div class="riga"><button class="secondario k-prova" type="button">Prova una conversazione</button><span class="esito k-esito"></span></div><div class="k-risultato" style="margin-top:10px"></div>';
+  const q = (k) => d.querySelector('.k-' + k);
+  q('url').value = c.url || ''; q('modello').value = c.modello || ''; q('impegno').value = c.impegno || 'low';
+  q('chiave').placeholder = c.chiaveImpostata ? 'chiave impostata: lascia vuoto per non cambiarla' : 'incolla la chiave';
+  const aggiorna = (cambio) => {
+    const sv = serviziCervello[q('servizio').value];
+    d.querySelector('.k-risultato').innerHTML = '';
+    q('aiuto').textContent = sv ? sv.aiuto : '';
+    d.querySelector('.k-urlbox').style.display = sv && sv.tipo === 'openai' ? '' : 'none';
+    d.querySelector('.k-impbox').style.display = sv && sv.tipo === 'claude' ? '' : 'none';
+    q('chiavenome').textContent = sv && sv.tipo === 'claude' ? 'Token o chiave API (vuoto = login già fatto sul computer)' : 'Chiave';
+    q('prova').style.display = sv ? '' : 'none';
+    if (cambio && sv) { q('url').value = sv.url || ''; q('modello').value = sv.modello || ''; q('chiave').value = ''; q('chiave').placeholder = 'incolla la chiave'; }
+  };
+  q('servizio').onchange = () => aggiorna(true);
+  aggiorna(false);
+  q('elenca').onclick = async () => {
+    q('esito').textContent = 'chiedo i modelli…';
+    try { const { modelli } = await chiedi('/cervello/modelli', { method: 'POST', body: { slot, config: leggiCervello(d) } }); q('modello').nextElementSibling.innerHTML = modelli.map((m) => '<option value="' + esc(m) + '">').join(''); q('esito').textContent = '✅ ' + modelli.length + ' modelli: scrivi nel campo per sceglierne uno'; }
+    catch (e) { q('esito').textContent = '⚠️ ' + e.message; }
+  };
+  q('prova').onclick = async () => {
+    q('esito').textContent = 'provo una conversazione (fino a 1 minuto)…'; q('prova').disabled = true; d.querySelector('.k-risultato').innerHTML = '';
+    try {
+      const r = await chiedi('/cervello/prova', { method: 'POST', body: { slot, config: leggiCervello(d) } });
+      q('esito').textContent = (r.ok ? '✅ ' : '⚠️ ') + r.servizio + ' · ' + r.modello + (r.primoMedianoMs ? ' · primo testo in ~' + (r.primoMedianoMs / 1000).toFixed(1) + ' s' : '');
+      d.querySelector('.k-risultato').innerHTML = (r.problemi.length ? '<div class="aiuto" style="color:var(--rosso)">' + r.problemi.map(esc).join('<br>') + '</div>' : '<div class="aiuto" style="color:var(--accento)">Ha risposto bene e nel formato giusto per prendere l\u2019appuntamento.</div>')
+        + '<div class="posti" style="margin-top:6px">' + r.turni.map((t) => '<div><strong>Cliente:</strong> ' + esc(t.cliente) + '<br><strong>Risposta' + (t.primoMs ? ' (' + (t.primoMs / 1000).toFixed(1) + ' s)' : '') + ':</strong> ' + esc((t.testo || t.errore || '').replace(/<<[^>]*>>?/g, ' [azione] ')) + '</div>').join('') + '</div>';
+    } catch (e) { q('esito').textContent = '⚠️ ' + e.message; }
+    q('prova').disabled = false;
+  };
+  $('#cervelli').append(d);
+}
+function leggiCervello(d) {
+  const q = (k) => d.querySelector('.k-' + k);
+  return { servizio: q('servizio').value, url: q('url').value.trim(), chiave: q('chiave').value.trim(), modello: q('modello').value.trim(), impegno: q('impegno').value };
+}
 function schedaConto(c = {}) {
   const d = document.createElement('div');
   d.className = 'conto';
@@ -251,6 +308,8 @@ function leggiConto(d) {
 $('#aggiungiConto').onclick = () => schedaConto({ url: servizi.nextcloud?.url });
 
 function riempi() {
+  $('#cervelli').innerHTML = '';
+  for (const slot of ['principale', 'riserva']) schedaCervello(slot, dati.cervello?.[slot]);
   $('#conti').innerHTML = '';
   for (const c of dati.calendari || []) schedaConto(c);
   for (const el of document.querySelectorAll('[data-k]')) {
@@ -264,7 +323,9 @@ function riempi() {
 function raccogli() {
   const o = {};
   for (const el of document.querySelectorAll('[data-k]')) metti(o, el.dataset.k, el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value);
-  o.calendari = [...document.querySelectorAll('.conto')].map(leggiConto);
+  o.calendari = [...document.querySelectorAll('.conto:not(.cervello)')].map(leggiConto);
+  o.cervello = {};
+  for (const d of document.querySelectorAll('.cervello')) o.cervello[d.dataset.slot] = leggiCervello(d);
   return o;
 }
 
@@ -371,7 +432,7 @@ $('#provaEmail').onclick = async () => {
 };
 
 (async () => {
-  try { servizi = await chiedi('/caldav/servizi'); dati = await chiedi('/impostazioni'); riempi(); await Promise.all([elenco(), posti()]); }
+  try { servizi = await chiedi('/caldav/servizi'); serviziCervello = await chiedi('/cervello/servizi'); dati = await chiedi('/impostazioni'); riempi(); await Promise.all([elenco(), posti()]); }
   catch (e) { avviso('Server non raggiungibile: ' + e.message, 8000); }
 })();
 </script>

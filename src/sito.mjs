@@ -1,7 +1,6 @@
 // Importa dal sito: legge le pagine di un sito (stesso dominio), ne tira fuori il testo e chiede
 // a Claude Code di estrarre tutto quello che serve al receptionist per rispondere al telefono.
-import { spawn } from 'node:child_process';
-import { CONFIG } from './config.mjs';
+import { completa } from './cervello.mjs';
 
 const MAX_PAGINE = 30;
 const MAX_TESTO = 120000; // caratteri mandati a Claude
@@ -107,28 +106,14 @@ Riceverai il testo delle pagine del sito. Estrai SOLO informazioni presenti nel 
 }
 Se un'informazione non c'è, lascia la stringa vuota.`;
 
-// Claude Code legge il testo del sito e restituisce la scheda (JSON).
-export function estraiDati(pagine, { modello = 'sonnet' } = {}) {
+// Il cervello scelto nel pannello (Claude Code, Gemini, Groq...) legge il testo del sito e restituisce la scheda (JSON).
+export async function estraiDati(pagine) {
   let testo = senzaRipetizioni(pagine).map((p) => `### PAGINA: ${p.url}\nTitolo: ${p.titolo}${p.descrizione ? `\nDescrizione: ${p.descrizione}` : ''}\n${p.testo}`).join('\n\n');
   if (testo.length > MAX_TESTO) testo = testo.slice(0, MAX_TESTO);
-  return new Promise((risolvi, rifiuta) => {
-    const p = spawn(CONFIG.cervello.comando, ['-p', '--output-format', 'json', '--model', modello, '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence', '--system-prompt', ISTRUZIONI], { stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = '', err = '';
-    p.stdout.on('data', (d) => (out += d));
-    p.stderr.on('data', (d) => (err += d));
-    const tempo = setTimeout(() => { p.kill(); rifiuta(new Error('Claude ci mette troppo (oltre 3 minuti)')); }, 180000);
-    p.on('close', () => {
-      clearTimeout(tempo);
-      try {
-        const r = JSON.parse(out);
-        if (r.is_error) throw new Error(r.result || 'errore di Claude');
-        const j = r.result.match(/\{[\s\S]*\}/);
-        if (!j) throw new Error('risposta senza JSON');
-        risolvi(JSON.parse(j[0]));
-      } catch (e) { rifiuta(new Error(`estrazione non riuscita: ${e.message}${err ? ` (${err.slice(0, 200)})` : ''}`)); }
-    });
-    p.stdin.end(`Testo del sito (${pagine.length} pagine):\n\n${testo}`);
-  });
+  const risposta = await completa(ISTRUZIONI, `Testo del sito (${pagine.length} pagine):\n\n${testo}`, { modello: 'sonnet', massimoToken: 6000 });
+  const j = risposta.match(/\{[\s\S]*\}/);
+  if (!j) throw new Error('estrazione non riuscita: la risposta non contiene i dati');
+  try { return JSON.parse(j[0]); } catch (e) { throw new Error(`estrazione non riuscita: ${e.message}`); }
 }
 
 // Lavori in corso (l'estrazione dura un minuto o due): il pannello chiede a che punto sono.
