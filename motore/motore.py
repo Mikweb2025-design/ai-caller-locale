@@ -26,12 +26,20 @@ PORTA = int(os.environ.get('MOTORE_PORTA', '5051'))
 # Parakeet TDT v3 (NVIDIA, CC-BY-4.0): 25 lingue europee, ~0,15 s a frase sulla GPU del Mac.
 # In alternativa un modello faster-whisper (tiny | base | small | medium | large-v3-turbo), che gira su CPU.
 STT_MODELLO = os.environ.get('STT_MODELLO', 'mlx-community/parakeet-tdt-0.6b-v3')
-TTS_MODELLO = os.environ.get('TTS_MODELLO', 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit')
+# Predefinito: la voce del receptionist in voci/receptionist.wav (creata con motore/disegna-voce.py),
+# clonata dal modello Base. Senza campione, uno speaker predefinito del modello CustomVoice.
+CAMPIONE = RADICE / 'voci' / 'receptionist.wav'
+TTS_MODELLO = os.environ.get('TTS_MODELLO') or ('mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit' if CAMPIONE.exists()
+                                                else 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit')
+TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.3)  # più bassa = più pacata e regolare
 TTS_VOCE = os.environ.get('TTS_VOCE', 'ryan')
 TTS_ISTRUZIONI = os.environ.get('TTS_ISTRUZIONI', '') or None
 # clonazione da un campione (solo con i modelli "Base"): file wav a 24 kHz e la sua trascrizione
 TTS_RIF_AUDIO = os.environ.get('TTS_RIF_AUDIO', '') or None
 TTS_RIF_TESTO = os.environ.get('TTS_RIF_TESTO', '') or None
+if not TTS_RIF_AUDIO and CAMPIONE.exists() and 'Base' in TTS_MODELLO:
+    TTS_RIF_AUDIO = str(CAMPIONE)
+    TTS_RIF_TESTO = (RADICE / 'voci' / 'testo.txt').read_text().strip()
 
 STT_MLX = '/' in STT_MODELLO
 
@@ -53,11 +61,18 @@ def lavoratore_stt(richieste, risposte):
     else:
         from faster_whisper import WhisperModel
         modello = WhisperModel(STT_MODELLO, device='cpu', compute_type='int8')
+    if STT_MLX:  # le lunghezze più comuni, preparate all'avvio
+        for secondi in range(2, 22, 2):
+            modello.generate(mx.zeros(secondi * 16000, dtype=mx.float32))
     risposte.put('pronto')
     while True:
         pcm8k = richieste.get()
         a = np.frombuffer(pcm8k, dtype='<i2').astype(np.float32) / 32768
         a = resample_poly(a, 2, 1).astype(np.float32)  # i modelli vogliono 16 kHz
+        # MLX prepara i calcoli per ogni lunghezza nuova (~1 s la prima volta): si arrotonda a blocchi
+        # di 2 secondi con silenzio in coda, così le lunghezze si ripetono e sono già pronte.
+        blocco = 32000
+        a = np.pad(a, (0, -len(a) % blocco))
         try:
             if STT_MLX:
                 testo = modello.generate(mx.array(a)).text
@@ -92,14 +107,27 @@ def parla(testo, nome_voce=None):
     # tetto all'audio: il codec fa 12 passi al secondo e una persona dice almeno ~8 caratteri al secondo.
     # Senza tetto, ogni tanto il modello non si ferma più e genera minuti di silenzio o rumore.
     massimo = int(12 * (len(testo) / 8 + 1.5))
-    kw = dict(text=testo, lang_code='italian', stream=True, streaming_interval=0.4, temperature=0.7,
+    kw = dict(text=testo, lang_code='italian', stream=True, streaming_interval=0.25, temperature=TTS_TEMPERATURA,
               max_tokens=massimo)
     if TTS_RIF_AUDIO:
         kw.update(ref_audio=TTS_RIF_AUDIO, ref_text=TTS_RIF_TESTO)
     else:
         kw.update(voice=nome_voce or TTS_VOCE, instruct=TTS_ISTRUZIONI)
+    # Con la voce clonata, finita la frase il modello a volte va avanti con rumore o pezzi del campione.
+    # Quando ha già detto praticamente tutto (~12 caratteri al secondo) e arriva una pausa lunga, ci si ferma.
+    atteso = len(testo) / 12
+    passo = SR_TTS // 20  # 50 ms
+    detto = silenzio = 0.0
     for r in voce.generate(**kw):
-        yield a_8k(r.audio)
+        a = np.asarray(r.audio, dtype=np.float32)
+        for i in range(0, len(a), passo):
+            pezzo = a[i:i + passo]
+            silenzio = silenzio + 0.05 if np.sqrt(np.mean(pezzo ** 2)) < 0.01 else 0.0
+            detto += 0.05
+            if detto > 0.9 * atteso and silenzio >= 0.5:
+                yield a_8k(a[:i + len(pezzo)])
+                return
+        yield a_8k(a)
 
 
 def ascolta(pcm8k):
@@ -123,16 +151,17 @@ class Gestore(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/salute':
-            return self._json(200, {'ok': True, 'stt': STT_MODELLO, 'tts': TTS_MODELLO, 'voce': TTS_VOCE})
+            return self._json(200, {'ok': True, 'stt': STT_MODELLO, 'tts': TTS_MODELLO, 'voce': TTS_RIF_AUDIO or TTS_VOCE})
         self._json(404, {})
 
     def do_POST(self):
         corpo = self.rfile.read(int(self.headers.get('Content-Length') or 0))
         if self.path == '/stt':
             t = time.time()
+            voce_occupata = blocco_tts.locked()
             with blocco_stt:
                 testo = ascolta(corpo)
-            return self._json(200, {'testo': testo, 'ms': round((time.time() - t) * 1000)})
+            return self._json(200, {'testo': testo, 'ms': round((time.time() - t) * 1000), 'voce_occupata': voce_occupata})
         if self.path == '/tts':
             richiesta = json.loads(corpo or b'{}')
             self.send_response(200)

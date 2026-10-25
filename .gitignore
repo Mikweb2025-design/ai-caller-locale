@@ -24,3 +24,4 @@ node_modules/
 # Claude Code locale
 .claude/settings.local.json
 __pycache__/
+voci/proposta-*.wav

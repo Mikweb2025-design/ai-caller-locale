@@ -57,11 +57,25 @@ export async function pronuncia(testo, alPezzo, { segnale, voce } = {}) {
 }
 
 // Frasi fisse (saluto, riempitivo): sintetizzate una volta sola e tenute in memoria.
+// Si ascoltano subito: se la voce ha mangiato parole o è andata avanti a vuoto, si rifanno.
+const parole = (t) => t.toLowerCase().normalize('NFD').replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean);
+async function sintetizzaBene(testo, tentativi = 4) {
+  let migliore = null;
+  for (let i = 0; i < tentativi; i++) {
+    const pezzi = [];
+    await pronuncia(testo, (p) => pezzi.push(p));
+    const audio = Buffer.concat(pezzi);
+    const sentite = new Set(parole((await trascrivi(daMulaw(audio))).testo));
+    const attese = parole(testo);
+    const voto = attese.filter((p) => sentite.has(p)).length / attese.length - Math.max(0, audio.length / 8000 - testo.length / 9) / 5;
+    if (!migliore || voto > migliore.voto) migliore = { audio, voto };
+    if (voto >= 0.99) break;
+  }
+  return migliore.audio;
+}
+
 const cache = new Map();
 export async function frasePronta(testo) {
-  if (!cache.has(testo)) {
-    const pezzi = [];
-    cache.set(testo, pronuncia(testo, (p) => pezzi.push(p)).then(() => Buffer.concat(pezzi)).catch((e) => { cache.delete(testo); throw e; }));
-  }
+  if (!cache.has(testo)) cache.set(testo, sintetizzaBene(testo).catch((e) => { cache.delete(testo); throw e; }));
   return cache.get(testo);
 }

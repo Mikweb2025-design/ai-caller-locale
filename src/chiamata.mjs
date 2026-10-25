@@ -16,7 +16,7 @@ const AZIONI = `
 Non hai strumenti da chiamare: quando le istruzioni dicono di chiamare uno strumento, scrivi invece un marcatore alla fine della risposta, dopo le parole da dire. Il marcatore non viene letto al cliente.
 - Al posto di "conferma_appuntamento": <<CONFERMA|nome|ora|auto>> (es. <<CONFERMA|Marco Rossi|9:00|Alfa Romeo Giulia 2019>>), una volta sola.
 - Al posto di "termina_chiamata": <<FINE>>, subito dopo il saluto finale.
-Il cliente ti ha già sentito rispondere al telefono con: "${saluto()}". Il primo messaggio che ricevi è la sua prima frase.
+Il passo 1 è già fatto: hai già risposto al telefono dicendo "${saluto()}" e il cliente l'ha sentito. Non ripetere mai il saluto, non ripresentarti e non dire di nuovo il nome dell'officina: rispondi direttamente alla sua prima frase (se chiede un appuntamento, passa subito al passo 2).
 Ogni messaggio che ricevi è la trascrizione automatica di quello che ha detto il cliente: può contenere errori di ascolto, interpretala con buon senso.`;
 
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
@@ -28,11 +28,12 @@ function separa(testo) {
 
 // Dove si può tagliare la frase per mandarla alla voce: fine frase, oppure una virgola se è lunga.
 // Pezzi troppo corti no: Qwen3-TTS sui frammenti di poche parole ogni tanto sbaglia.
-function taglio(s) {
+// Il primo pezzo di una risposta può partire già a una virgola: si comincia a parlare prima.
+function taglio(s, primo = false) {
   if (s.lastIndexOf('<<') > s.lastIndexOf('>>')) return -1; // marcatore a metà
   const m = [...s.matchAll(/[.!?…:;](?=\s)|\.\.\.(?=\s)/g)].pop();
   if (m && m.index >= 20) return m.index + m[0].length;
-  if (s.length > 90) { const v = s.lastIndexOf(', '); if (v > 30) return v + 1; }
+  if (s.length > (primo ? 40 : 90)) { const v = s.lastIndexOf(', '); if (v > 30) return v + 1; }
   return -1;
 }
 
@@ -57,6 +58,7 @@ export function gestisciChiamata(chiamata) {
   let frase = [];
   let turno = 0; // turno di risposta che vogliamo sentire
   let bufferTesto = '';
+  let giaDetto = false; // il primo pezzo della risposta è già partito
   let coda = Promise.resolve(); // frasi da leggere, in ordine
   let annulla = new AbortController();
   let fineTurno = 0; // quando il cliente ha smesso di parlare
@@ -72,6 +74,7 @@ export function gestisciChiamata(chiamata) {
     annulla = new AbortController();
     coda = Promise.resolve();
     bufferTesto = '';
+    giaDetto = false;
     clearTimeout(riempitivo);
     if (chiamata.sta_parlando) { chiamata.svuota(); chiamata.log(`✂ ${motivo}`); }
   }
@@ -102,11 +105,11 @@ export function gestisciChiamata(chiamata) {
     let t;
     try { t = await trascrivi(pcm); } catch (e) { return chiamata.log('errore ascolto', e.message); }
     const detto = t.testo.trim();
-    if (!detto || /^[\s.,!?…-]*$/.test(detto) || /sottotitoli|amara\.org|grazie per la visione/i.test(detto)) {
+    if (!detto || /^[\s.,!?…-]*$/.test(detto) || /sottotitoli|amara\.org|grazie per la visione/i.test(detto) || /^(yeah|yes|so|uh|um|oh|the|you|and|hmm)[.!?]?$/i.test(detto)) {
       fineTurno = 0; // rumore o "allucinazione" tipica di Whisper sul silenzio
       return;
     }
-    chiamata.log(`👤 ${detto} (ascolto ${t.ms} ms)`);
+    chiamata.log(`👤 ${detto} (ascolto ${t.ms} ms${t.voce_occupata ? ", voce occupata" : ""})`);
     testo('cliente', detto);
     nuovoTurno(detto);
   }
@@ -129,7 +132,8 @@ export function gestisciChiamata(chiamata) {
       if (n !== turno) return; // risposta a una frase ormai superata
       bufferTesto += pezzo;
       let i;
-      while ((i = taglio(bufferTesto)) > 0) {
+      while ((i = taglio(bufferTesto, !giaDetto)) > 0) {
+        giaDetto = true;
         const { parlato } = separa(bufferTesto.slice(0, i));
         bufferTesto = bufferTesto.slice(i).trimStart();
         if (parlato.trim()) leggi(parlato.trim());
@@ -188,12 +192,15 @@ export function gestisciChiamata(chiamata) {
     let somma = 0;
     for (let i = 0; i < pcm.length; i += 2) { const s = pcm.readInt16LE(i); somma += s * s; }
     const rms = Math.sqrt(somma / (pcm.length / 2));
-    const forte = rms > v.soglia;
+    // Mentre il receptionist parla serve una voce più forte e più lunga per interromperlo:
+    // l'eco dell'altoparlante (browser senza cuffie) o un colpo di tosse non devono zittirlo.
+    const sopra = chiamata.sta_parlando;
+    const forte = rms > v.soglia * (sopra ? 1.6 : 1);
     if (!parlando) {
       preRoll.push(pcm);
       if (preRoll.length > 15) preRoll.shift();
       voce = forte ? voce + 1 : 0;
-      if (voce * FRAME_MS >= v.inizioMs) {
+      if (voce * FRAME_MS >= (sopra ? v.interruzioneMs : v.inizioMs)) {
         parlando = true;
         muto = 0;
         frase = [...preRoll];

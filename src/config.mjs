@@ -28,6 +28,7 @@ export const CONFIG = {
     inizioMs: numero(process.env.VAD_INIZIO_MS, 120), // voce continua per dire "sta parlando"
     silenzioMs: numero(process.env.VAD_SILENZIO_MS, 750), // silenzio dopo cui la frase è finita
     minimoMs: numero(process.env.VAD_MINIMO_MS, 250), // frasi più corte = rumore
+    interruzioneMs: numero(process.env.VAD_INTERRUZIONE_MS, 500), // voce continua per interrompere il receptionist
   },
   // se Claude tarda, dopo questi secondi dice "Mmh, allora..." (-1 = mai)
   riempitivoSecondi: numero(process.env.RIEMPITIVO_S, 2.2),
