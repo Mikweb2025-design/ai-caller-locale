@@ -31,8 +31,8 @@ STT_MODELLO = os.environ.get('STT_MODELLO', 'mlx-community/parakeet-tdt-0.6b-v3'
 CAMPIONE = RADICE / 'voci' / 'receptionist.wav'
 TTS_MODELLO = os.environ.get('TTS_MODELLO') or ('mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit' if CAMPIONE.exists()
                                                 else 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit')
-TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.6)  # più bassa = più piatta, più alta = più espressiva (e meno prevedibile)
-TTS_TOP_P = float(os.environ.get('TTS_TOP_P') or 0.92)  # limita gli esiti improbabili senza rendere la voce monotona
+TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.72)  # più bassa = più piatta, più alta = più espressiva (e meno prevedibile)
+TTS_TOP_P = float(os.environ.get('TTS_TOP_P') or 0.93)  # varietà sufficiente per una cadenza meno meccanica
 TTS_TOP_K = int(os.environ.get('TTS_TOP_K') or 40)
 TTS_RIPETIZIONE = float(os.environ.get('TTS_RIPETIZIONE') or 1.08)
 TTS_VOCE = os.environ.get('TTS_VOCE', 'ryan')

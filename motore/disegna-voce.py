@@ -46,14 +46,43 @@ DESCRIZIONI = {
         "No advertising tone, no theatre, no exaggerated cheerfulness, no sing-song melody, no newsreader style, "
         "no perfect metronomic rhythm and no robotic cadence."
     ),
+    'maria-viva': [
+        (
+            "A 31-year-old woman born and raised in Milan, speaking naturally on a real phone call for a small Italian business. "
+            "She is alert, warm and genuinely interested, with a clear native Italian voice and a very light Milanese colour. "
+            "She reacts to meaning instead of reciting: slightly quicker on easy words, a little slower on dates, warm emphasis on alternatives, "
+            "and a naturally rising final question. Subtle smile, tiny breaths and human timing. Conversational and spontaneous, never sleepy, "
+            "never flat, never sing-song, never an advertisement, never a voice-over and never a perfect scripted receptionist."
+        ),
+        (
+            "A native Italian woman from northern Italy, around 34, who runs the front desk of a busy family workshop. On the phone she is present, "
+            "quick-minded and pleasantly informal while remaining professional. Her delivery has organic changes of pace, small imperfect pauses, "
+            "clear contrast between two appointment options, and real curiosity in the question. Medium warm pitch, understated energy, no forced smile. "
+            "Absolutely not monotone, robotic, theatrical, promotional, overly polished or slow."
+        ),
+        (
+            "A 29-year-old native Milanese receptionist in a one-to-one customer call. She sounds like a real person thinking while she speaks: calm opening, "
+            "a spontaneous reaction when she understands, then brisk and helpful while checking dates. Natural Italian melody and connected phrasing, "
+            "with restrained but noticeable pitch movement and a sincere final question. Warm, capable and awake; never dull, canned, childish, breathy, "
+            "announcer-like or overly cheerful."
+        ),
+        (
+            "An experienced 38-year-old Italian office manager from Milan, friendly and efficient on a live phone call. Native Italian pronunciation, "
+            "medium-low warm voice, lively conversational rhythm and confident but unforced intonation. She varies speed within the sentence, lightly stresses "
+            "the useful details and leaves only short natural pauses. The final question sounds addressed to one specific person. Human, relaxed and engaging, "
+            "not a recording, not formal narration, not monotone and not theatrical."
+        ),
+    ],
 }
 des = DESCRIZIONI.get(TIPO)
 DESCRIZIONE = des[0] if isinstance(des, list) else des
-PREFISSO = 'proposta' if TIPO == 'maschile' else ('voce-f' if isinstance(des, list) else f'proposta-{TIPO}')
+PREFISSO = 'proposta' if TIPO == 'maschile' else (f'proposta-{TIPO}' if TIPO.startswith('maria-') else ('voce-f' if isinstance(des, list) else f'proposta-{TIPO}'))
 # Un riferimento breve e coerente clona meglio ritmo e timbro. Evitiamo intercalari e frasi isolate
 # come "Bene.", che il modello tenderebbe a ripetere nelle telefonate.
-TESTO = ("Lasercamp, buongiorno, sono Maria. Ah, certo, mi dica pure. Per giovedì posso proporle le dieci e mezza; "
-         "venerdì, invece, ci sarebbe posto alle tre. Quale le viene meglio?")
+TESTO = (("Lasercamp, buongiorno, sono Maria. Mi dica pure. Ah, ho capito: per giovedì posso proporle le dieci e mezza; "
+          "venerdì invece ci sarebbe posto alle tre. Lei quale preferisce?") if TIPO == 'maria-viva' else
+         ("Lasercamp, buongiorno, sono Maria. Ah, certo, mi dica pure. Per giovedì posso proporle le dieci e mezza; "
+          "venerdì, invece, ci sarebbe posto alle tre. Quale le viene meglio?"))
 
 m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit")
 (RADICE / 'voci').mkdir(exist_ok=True)
