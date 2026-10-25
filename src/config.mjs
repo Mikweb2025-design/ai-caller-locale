@@ -20,6 +20,8 @@ export const CONFIG = {
   cervello: {
     comando: process.env.CLAUDE_COMANDO || 'claude',
     modello: process.env.CLAUDE_MODELLO || 'haiku', // haiku = il più pronto al telefono
+    // impegno "low": primo testo in ~0,65 s invece di ~1,8 s, con risposte che restano buone
+    impegno: process.env.CLAUDE_IMPEGNO || 'low', // low | medium | high
   },
 
   // Quando il cliente ha finito di parlare

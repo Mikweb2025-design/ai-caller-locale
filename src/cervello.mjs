@@ -15,7 +15,7 @@ export class Cervello {
     this.chiuso = false;
     this.p = spawn(CONFIG.cervello.comando, [
       '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
-      '--include-partial-messages', '--model', CONFIG.cervello.modello,
+      '--include-partial-messages', '--model', CONFIG.cervello.modello, '--effort', CONFIG.cervello.impegno,
       '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence',
       '--system-prompt', istruzioni,
     ], {
