@@ -78,6 +78,9 @@ export function gestisciChiamata(chiamata) {
   let chiudere = false;
   let richiamoId = null; // il primo RICHIAMA della chiamata: gli altri lo aggiornano invece di duplicarlo
   let confermato = false; // un solo appuntamento per chiamata: i CONFERMA ripetuti si ignorano
+  const deveChiedereEmail = Boolean(impostazioni().email?.chiediEmail);
+  let emailChiesta = false;
+  let attendeRispostaEmail = false;
   let ultimoCliente = ''; // l'ultima frase del cliente, per capire se ha davvero salutato
   let ultimoReceptionist = '';
   const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
@@ -140,7 +143,11 @@ export function gestisciChiamata(chiamata) {
     interrompi('nuova frase del cliente');
     primoAudio = true;
     if (!fineTurno) fineTurno = Date.now();
-    turno = cervello.ascolta(detto);
+    const perCervello = attendeRispostaEmail
+      ? `Risposta del cliente alla domanda "Le mando la conferma per email, quale indirizzo?": ${detto}`
+      : detto;
+    attendeRispostaEmail = false;
+    turno = cervello.ascolta(perCervello);
     if (CONFIG.riempitivoSecondi >= 0) {
       riempitivo = setTimeout(async () => {
         const audio = await frasePronta(RIEMPITIVO).catch(() => null);
@@ -166,11 +173,32 @@ export function gestisciChiamata(chiamata) {
       if (n !== turno) return;
       // Una sola sintesi per tutta la battuta: Qwen conserva l'arco naturale tra virgole,
       // punti e domanda. Spezzare ogni frase faceva ripartire il tono da zero e suonava robotico.
-      const { parlato } = separa(completo);
+      const separata = separa(completo);
+      const primaConferma = separata.azioni.find((a) => a.tipo === 'CONFERMA');
+      // Il modello può tentare di chiudere la prenotazione appena riceve il motivo. Se nel pannello
+      // è attiva la raccolta email, la domanda viene imposta qui: non dipende dalla memoria del modello.
+      if (deveChiedereEmail && !emailChiesta && primaConferma && !primaConferma.argomenti[4]) {
+        bufferTesto = '';
+        emailChiesta = true;
+        attendeRispostaEmail = true;
+        const domanda = linguaVoce === 'de'
+          ? 'Ich schicke Ihnen die Bestätigung per E-Mail. Wie lautet Ihre E-Mail-Adresse?'
+          : 'Le mando la conferma per email, quale indirizzo?';
+        emetti(domanda, n);
+        ultimoReceptionist = testoTurno.trim();
+        chiamata.log(`🤖 ${ultimoReceptionist}`);
+        testo('receptionist', ultimoReceptionist);
+        chiamata.log('⚠️ CONFERMA rimandata: prima va chiesta l’email');
+        return;
+      }
+      const { parlato, azioni } = separata;
       bufferTesto = '';
       emetti(parlato, n);
-      const { azioni } = separa(completo);
       const tutto = testoTurno.trim();
+      if (deveChiedereEmail && !emailChiesta && /(?:email|e-mail).*(?:indirizzo|adresse)|(?:indirizzo|adresse).*(?:email|e-mail)/i.test(tutto)) {
+        emailChiesta = true;
+        attendeRispostaEmail = true;
+      }
       const precedente = ultimoReceptionist;
       ultimoReceptionist = tutto.trim();
       chiamata.log(`🤖 ${tutto.trim()}`);

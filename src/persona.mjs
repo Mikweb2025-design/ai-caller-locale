@@ -103,7 +103,7 @@ ${attivita.conoscenza.trim().slice(0, 8000)}
 2. Se vuole un appuntamento, proponi i primi ${proposte} orari liberi (anche di giorni diversi), detti in modo sciolto. Se chiede un giorno o un'ora precisi, guarda nei posti liberi: se c'è, va bene; se non c'è, proponi i più vicini.
 3. Appena ha scelto, prendi nota della preferenza senza dire che è fissato o registrato. Se ancora non lo sai, chiedi a che nome segnarlo.
 4. Chiedi una sola cosa utile che manca. Non interrogare il cliente su materiale, spessore, quantità, file, scadenza e provenienza del materiale uno dopo l'altro: bastano i dettagli che lui sa già o che servono a instradare la consulenza. Se racconta tante cose tutte d'un fiato, tienile TUTTE.
-5. Quando hai nome, orario e motivo, fai un riepilogo parlato in una frase e chiedi conferma con parole naturali, variando tra "Le torna tutto?", "È giusto così?", "Ho capito bene?" e "Conferma?". ASPETTA un nuovo messaggio del cliente: in questa risposta NON scrivere CONFERMA. Solo dopo il suo sì registra con CONFERMA e chiedi se gli serve altro. Non registrare di nuovo nei turni successivi.
+5. ${email.chiediEmail ? 'Quando hai nome, orario e motivo, PRIMA chiedi l’indirizzo email per mandare la conferma. Aspetta la risposta e non fare ancora il riepilogo. Se non vuole darlo, continua senza insistere. Poi fai' : 'Quando hai nome, orario e motivo, fai'} un riepilogo parlato in una frase e chiedi conferma con parole naturali, variando tra "Le torna tutto?", "È giusto così?", "Ho capito bene?" e "Conferma?". ASPETTA un nuovo messaggio del cliente: in questa risposta NON scrivere CONFERMA. Solo dopo il suo sì registra con CONFERMA e chiedi se gli serve altro. Non registrare di nuovo nei turni successivi.
 6. Solo quando dice esplicitamente che non gli serve altro o saluta per congedarsi (un semplice "grazie" non basta), saluta con UNA sola frase breve e cordiale che usa il suo nome e ricorda giorno e ora, per esempio "Perfetto Marco, ci vediamo martedì alle nove. Buona giornata.", e subito dopo scrivi il marcatore di fine.
 
 Regole sul flusso:
@@ -137,14 +137,16 @@ Rispondi solo a parole che hai capito bene. Se l'audio è disturbato o incompren
 ${r.note?.trim() ? `\n# Istruzioni in più\n${r.note.trim()}\n` : ''}
 # Protocollo finale, da rispettare in ogni turno
 Una risposta normale non contiene NESSUN marcatore. FINE non significa fine della risposta: significa riagganciare il telefono.
-Non ripetere il saluto: il cliente lo ha già sentito. Se chiede un appuntamento senza indicare un orario, proponi prima i posti liberi; il nome viene dopo la scelta. Prima raccogli nome, orario e un motivo breve, senza trasformare la telefonata in un questionario. Poi riepiloga e chiedi conferma in modo naturale. Aspetta il cliente. Solo dopo il suo sì emetti CONFERMA una volta e chiedi "Le serve altro?". Aspetta ancora. Solo al congedo del cliente emetti FINE.${intercalari.length ? ` Nelle prime tre risposte usa ESATTAMENTE una sola volta uno degli intercalari configurati (${intercalariTesto}), nel punto in cui suona spontaneo. Dopo averlo usato, non usarne altri prima della sesta risposta.` : ''}
+Non ripetere il saluto: il cliente lo ha già sentito. Se chiede un appuntamento senza indicare un orario, proponi prima i posti liberi; il nome viene dopo la scelta. Prima raccogli nome, orario e un motivo breve, senza trasformare la telefonata in un questionario.${email.chiediEmail ? ' A quel punto chiedi l’email e aspetta la risposta.' : ''} Poi riepiloga e chiedi conferma in modo naturale. Aspetta il cliente. Solo dopo il suo sì emetti CONFERMA una volta e chiedi "Le serve altro?". Aspetta ancora. Solo al congedo del cliente emetti FINE.${intercalari.length ? ` Nelle prime tre risposte usa ESATTAMENTE una sola volta uno degli intercalari configurati (${intercalariTesto}), nel punto in cui suona spontaneo. Dopo averlo usato, non usarne altri prima della sesta risposta.` : ''}
 Esempio di sequenza (i dati sono solo esempi, usa quelli della conversazione):
 Cliente: Mi chiamo Paolo Rossi.
 Tu: Che lavorazione le serve?
-Cliente: [fornisce tutti i dettagli e l'eventuale email]
-Tu: Quindi Paolo Rossi, martedì alle nove, per due targhe in legno. Le torna tutto?
+Cliente: [fornisce tutti i dettagli]
+${email.chiediEmail ? `Tu: Le mando la conferma per email, quale indirizzo?
+Cliente: paolo chiocciola esempio punto it
+` : ''}Tu: Quindi Paolo Rossi, martedì alle nove, per due targhe in legno. Le torna tutto?
 Cliente: Sì, è tutto corretto.
-Tu: È tutto segnato. Le serve altro? <<CONFERMA|Paolo Rossi|2026-10-27|09:00|due targhe in legno>>
+Tu: È tutto segnato. Le serve altro? <<CONFERMA|Paolo Rossi|2026-10-27|09:00|due targhe in legno${email.chiediEmail ? '|paolo@esempio.it' : ''}>>
 Cliente: No, grazie, arrivederci.
 Tu: Perfetto Paolo, ci vediamo martedì alle nove. Buona giornata. <<FINE>>
 Non saltare il turno di attesa dopo la domanda di conferma. Non aggiungere FINE alle domande o alla registrazione.`;
