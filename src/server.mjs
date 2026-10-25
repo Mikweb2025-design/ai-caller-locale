@@ -14,6 +14,7 @@ import { saluto } from './persona.mjs';
 import { frasePronta } from './voce.mjs';
 import { paginaAdmin } from './admin.mjs';
 import { cercaCalendari, SERVIZI } from './caldav.mjs';
+import { avviaImportazione, statoImportazione } from './sito.mjs';
 import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
 import { appuntamenti, annulla, sposta, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
 
@@ -93,6 +94,13 @@ const server = http.createServer(async (req, res) => {
       }
       // CalDAV: servizi noti, ricerca dei calendari di un conto, prova di lettura
       if (percorso === '/caldav/servizi') return json(200, SERVIZI);
+      // Importa dal sito: parte un lavoro, il pannello ne chiede lo stato
+      if (percorso === '/sito/importa' && req.method === 'POST') {
+        if (!String(corpo.url || '').trim()) return json(400, { errore: "scrivi l'indirizzo del sito" });
+        return json(200, { id: avviaImportazione(String(corpo.url)) });
+      }
+      const imp = percorso.match(/^\/sito\/importa\/(\w+)$/);
+      if (imp) { const l = statoImportazione(imp[1]); return l ? json(200, l) : json(404, { errore: 'importazione non trovata' }); }
       // Twilio: stato, verifica delle credenziali, collegamento del webhook, chiamata di prova
       if (percorso === '/twilio/stato') return json(200, { webhook: indirizzoWebhook(), segretoLocale: segreto === 'locale', configurato: twilioConfigurato(), numero: twilio().numero });
       if (percorso.startsWith('/twilio/') && req.method === 'POST') {

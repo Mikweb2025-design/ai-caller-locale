@@ -21,6 +21,10 @@ export const PREDEFINITE = {
     // cosa chiedere al cliente oltre a nome e orario
     domande: 'marca, modello e anno della macchina; i lavori da fare',
     servizi: 'tagliando, freni, gomme, diagnosi elettronica, climatizzatore, revisione',
+    email: '',
+    // scheda completa per rispondere al telefono (si può importare dal sito: pannello → Attività)
+    conoscenza: '',
+    sitoImportato: '', // da quale indirizzo e quando
   },
   receptionist: {
     nome: process.env.NOME_RECEPTIONIST || 'Luca',

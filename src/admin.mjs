@@ -65,17 +65,24 @@ export function paginaAdmin({ api, web, feed }) {
   </section>
 
   <section data-scheda="Attività">
-    <h2>L'attività</h2>
+    <h2>Importa dal sito</h2>
+    <p class="aiuto">Scrivi l'indirizzo del sito: leggo fino a 30 pagine e Claude ne tira fuori tutto quello che serve per rispondere al telefono (servizi, materiali, contatti, domande frequenti…). I campi qui sotto si riempiono: controllali e premi Salva.</p>
+    <div class="riga"><input id="sitoUrl" placeholder="es. lasercamp.it" style="max-width:340px"><button type="button" id="sitoImporta">Importa dal sito</button><span class="esito" id="sitoEsito"></span></div>
+    <p class="aiuto" id="sitoNota" style="margin-top:8px"></p>
+    <h2 style="margin-top:22px">L'attività</h2>
     <p class="aiuto">Quello che il receptionist sa e racconta a chi chiama.</p>
     <div class="griglia">
       <div><label>Nome</label><input data-k="attivita.nome"></div>
       <div><label>Che cos'è <small>(es. "un'officina meccanica indipendente")</small></label><input data-k="attivita.tipo"></div>
       <div><label>Indirizzo</label><input data-k="attivita.indirizzo"></div>
       <div><label>Sito</label><input data-k="attivita.sito"></div>
+      <div><label>Telefono</label><input data-k="attivita.telefono"></div>
+      <div><label>Email</label><input data-k="attivita.email"></div>
     </div>
     <div style="margin-top:12px"><label>Servizi</label><textarea data-k="attivita.servizi"></textarea></div>
     <div style="margin-top:12px"><label>Cosa chiedere a chi prenota <small>(oltre a nome e orario)</small></label><input data-k="attivita.domande"></div>
     <div style="margin-top:12px"><label>Altre informazioni utili <small>(storia, parcheggio, pagamenti…)</small></label><textarea data-k="attivita.info"></textarea></div>
+    <div style="margin-top:12px"><label>Scheda per il telefono <small>(tutto quello che il receptionist deve sapere; si riempie con "Importa dal sito")</small></label><textarea data-k="attivita.conoscenza" style="min-height:260px"></textarea></div>
   </section>
 
   <section data-scheda="Receptionist">
@@ -337,6 +344,24 @@ $('#twChiamami').onclick = async () => {
   $('#twChiamaEsito').textContent = 'chiamo…';
   try { await salvaPrima(); const r = await chiedi('/twilio/chiamami', { method: 'POST', body: { numero: n } }); $('#twChiamaEsito').textContent = '📞 ti sto chiamando (' + r.sid + ')'; }
   catch (e) { $('#twChiamaEsito').textContent = '⚠️ ' + e.message; }
+};
+$('#sitoImporta').onclick = async () => {
+  const url = $('#sitoUrl').value.trim();
+  if (!url) return avviso("Scrivi l'indirizzo del sito");
+  $('#sitoImporta').disabled = true; $('#sitoNota').textContent = '';
+  try {
+    const { id } = await chiedi('/sito/importa', { method: 'POST', body: { url } });
+    let l;
+    do { await new Promise((r) => setTimeout(r, 1500)); l = await chiedi('/sito/importa/' + id); $('#sitoEsito').textContent = '⏳ ' + l.messaggio; } while (l.stato === 'in corso');
+    if (l.stato === 'errore') throw new Error(l.messaggio);
+    const d = l.dati, metti1 = (k, v) => { const el = document.querySelector('[data-k="' + k + '"]'); if (el && v) el.value = v; };
+    for (const k of ['nome', 'tipo', 'indirizzo', 'telefono', 'email', 'sito', 'servizi', 'domande', 'conoscenza']) metti1('attivita.' + k, d[k]);
+    if (d.saluto) metti1('receptionist.saluto', d.saluto.replace('{nome}', $('[data-k="receptionist.nome"]').value || 'Luca'));
+    if (d.orariTrovati && d.orari) for (const [g, v] of Object.entries(d.orari)) { const el = document.querySelector('[data-k="orari.' + g + '"]'); if (el) el.value = v || ''; }
+    $('#sitoEsito').textContent = '✅ ' + l.messaggio + '. Controlla i campi e premi Salva.';
+    $('#sitoNota').textContent = (d.orariTrovati ? 'Ho preso anche gli orari di apertura (scheda Orari). ' : 'Orari di apertura non trovati sul sito: mettili tu nella scheda Orari. ') + (d.nonTrovato || '');
+  } catch (e) { $('#sitoEsito').textContent = '⚠️ ' + e.message; }
+  $('#sitoImporta').disabled = false;
 };
 $('#provaEmail').onclick = async () => {
   const a = $('#emailProva').value.trim();

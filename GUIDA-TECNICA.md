@@ -31,6 +31,7 @@ src/
   impostazioni.mjs   impostazioni del pannello admin (dati/impostazioni.json)
   agenda.mjs         posti liberi, appuntamenti, calendari iCal, email di conferma
   caldav.mjs         calendari CalDAV: ricerca, lettura, creazione, spostamento, cancellazione
+  sito.mjs           importa dal sito: lettura delle pagine ed estrazione dei dati con Claude Code
   admin.mjs          pagina del pannello admin
   twilio.mjs         numero Twilio: credenziali, verifica, webhook automatico, SMS, chiamate in uscita
   strumenti.mjs      registrazione dell'appuntamento e SMS di conferma
@@ -60,7 +61,8 @@ prove/               chiamate simulate e misure dei ritardi
 
 Tutto si cambia da `/admin` (con `SEGRETO`: `/admin/<SEGRETO>`) e vale dalla chiamata successiva. I dati stanno in `dati/impostazioni.json` e `dati/appuntamenti.json`.
 - **Appuntamenti:** elenco, spostamento e annullamento (anche nei calendari collegati). "Da verificare" = il cliente ha preso un orario già occupato o fuori orario.
-- **Attività e Receptionist:** nome, indirizzo, servizi, cosa chiedere a chi prenota, saluto, istruzioni in più.
+- **Importa dal sito** (scheda Attività): legge fino a 30 pagine dello stesso dominio (prima home, contatti, servizi, prezzi, FAQ… e la sitemap), toglie menu e piè di pagina ripetuti e passa il testo a Claude Code (Sonnet), che restituisce i campi dell'attività e una "Scheda per il telefono" completa. Ci vuole circa un minuto; i campi si riempiono e li salvi tu dopo averli controllati. Gli orari si prendono solo se il sito li indica davvero.
+- **Attività e Receptionist:** nome, indirizzo, telefono, email, servizi, cosa chiedere a chi prenota, scheda per il telefono (va nelle istruzioni di Claude a ogni chiamata), saluto, istruzioni in più.
 - **Orari:** fasce per giorno, chiusure straordinarie, durata degli appuntamenti, quanti in contemporanea, preavviso, quanto avanti si prenota. Il receptionist propone solo i posti davvero liberi.
 - **Calendari collegati (CalDAV):** Nextcloud, iCloud, Fastmail, Synology, mailbox.org, Zoho, Yahoo, Radicale, Baïkal e ogni server CalDAV, anche più di uno insieme.
   - Si accede con utente e **password per le app**. "Cerca calendari" trova i calendari anche partendo dal solo indirizzo del server; "Prova" legge gli impegni.
@@ -87,7 +89,8 @@ Le credenziali stanno in `dati/impostazioni.json` (il token non torna mai al bro
 
 Tutto si cambia da `/admin` (con `SEGRETO`: `/admin/<SEGRETO>`) e vale dalla chiamata successiva. I dati stanno in `dati/impostazioni.json` e `dati/appuntamenti.json`.
 - **Appuntamenti:** elenco, spostamento e annullamento (anche nei calendari collegati). "Da verificare" = il cliente ha preso un orario già occupato o fuori orario.
-- **Attività e Receptionist:** nome, indirizzo, servizi, cosa chiedere a chi prenota, saluto, istruzioni in più.
+- **Importa dal sito** (scheda Attività): legge fino a 30 pagine dello stesso dominio (prima home, contatti, servizi, prezzi, FAQ… e la sitemap), toglie menu e piè di pagina ripetuti e passa il testo a Claude Code (Sonnet), che restituisce i campi dell'attività e una "Scheda per il telefono" completa. Ci vuole circa un minuto; i campi si riempiono e li salvi tu dopo averli controllati. Gli orari si prendono solo se il sito li indica davvero.
+- **Attività e Receptionist:** nome, indirizzo, telefono, email, servizi, cosa chiedere a chi prenota, scheda per il telefono (va nelle istruzioni di Claude a ogni chiamata), saluto, istruzioni in più.
 - **Orari:** fasce per giorno, chiusure straordinarie, durata degli appuntamenti, quanti in contemporanea, preavviso, quanto avanti si prenota. Il receptionist propone solo i posti davvero liberi.
 - **Calendari collegati (CalDAV):** Nextcloud, iCloud, Fastmail, Synology, mailbox.org, Zoho, Yahoo, Radicale, Baïkal e ogni server CalDAV, anche più di uno insieme.
   - Si accede con utente e **password per le app**. "Cerca calendari" trova i calendari anche partendo dal solo indirizzo del server; "Prova" legge gli impegni.

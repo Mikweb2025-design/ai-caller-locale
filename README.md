@@ -1,25 +1,8 @@
-<p align="center">
-  <a href="https://cosmio.it">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/cosmio-logo-bianco.svg">
-      <img src="assets/cosmio-logo-scuro.svg" alt="Cosmio" width="420">
-    </picture>
-  </a>
-</p>
+# Receptionist AI in locale
 
-<h1 align="center">Il receptionist AI che risponde al telefono al posto tuo</h1>
+Fork di [Henry12034/ai-caller-cosmio](https://github.com/Henry12034/ai-caller-cosmio), il receptionist AI di [Cosmio](https://cosmio.it), rifatto per girare tutto in locale con modelli open source e Claude Code.
 
-<p align="center">
-  <strong>Risponde in circa un secondo, prende gli appuntamenti e parla un italiano così naturale che è difficile accorgersi che non è una persona.<br>Giorno e notte, anche quando tu hai le mani occupate.</strong>
-</p>
-
-<p align="center">
-  <a href="demo/telefonata-locale.mp3">🎧 Ascolta una telefonata</a>
-  &nbsp;·&nbsp;
-  <a href="https://cosmio.it/prenota?da=ai-caller">📅 Lo voglio nella mia attività</a>
-</p>
-
----
+🎧 [Ascolta una telefonata](demo/telefonata-lasercamp.mp3)
 
 ## Ogni telefonata persa è un cliente che chiama il concorrente
 
@@ -53,7 +36,7 @@ Il receptionist AI risponde al primo squillo, ogni volta. Accoglie il cliente, c
 
 Su un Mac con Apple Silicon il receptionist risponde in circa 2 secondi dalla fine della frase del cliente.
 
-**Pannello admin** (`/admin`): orari di apertura e chiusure, posti liberi veri, calendari Nextcloud, iCloud e CalDAV collegati in lettura e scrittura (crea, sposta, cancella), calendario da abbonarsi in Google/Outlook, numero Twilio (credenziali, webhook collegato in automatico, chiamata di prova), email di conferma, SMS ed elenco degli appuntamenti.
+**Pannello admin** (`/admin`): importazione automatica dei dati dal sito dell'attività, orari di apertura e chiusure, posti liberi veri, calendari Nextcloud, iCloud e CalDAV collegati in lettura e scrittura (crea, sposta, cancella), calendario da abbonarsi in Google/Outlook, numero Twilio (credenziali, webhook collegato in automatico, chiamata di prova), email di conferma, SMS ed elenco degli appuntamenti.
 
 ## Come appare
 
@@ -62,6 +45,10 @@ Su un Mac con Apple Silicon il receptionist risponde in circa 2 secondi dalla fi
 <p align="center"><img src="docs/screenshot/chiamata-browser.png" alt="Chiamata di prova dal browser con la chat" width="420"></p>
 
 **Pannello admin** (`/admin`): appuntamenti, attività, orari, calendari, telefono, email e SMS.
+
+**Importa dal sito:** scrivi l'indirizzo del sito, il receptionist ne legge fino a 30 pagine e Claude ne estrae tutto quello che serve al telefono (servizi, materiali e limiti tecnici, contatti, domande frequenti), senza inventare quello che non c'è.
+
+<p align="center"><img src="docs/screenshot/admin-attivita.png" alt="Importa dal sito: i dati dell'attività estratti in automatico" width="720"></p>
 
 | Appuntamenti | Orari e posti liberi |
 |---|---|
@@ -79,21 +66,6 @@ L'esempio qui è il centralino di un'officina, ma funziona per qualsiasi attivit
 - ristoranti e locali (prenotazioni dei tavoli)
 - palestre, scuole e studi professionali
 
-## Lo facciamo noi: tu non devi toccare niente
-
-Questo progetto è gratuito e il codice è qui sotto. Se non hai tempo o competenze tecniche, lo mettiamo in funzione noi, su misura per la tua attività:
-
-1. **Una call gratuita di 30 minuti.** Ci racconti come lavori e cosa ti chiedono più spesso al telefono.
-2. **Lo configuriamo su misura.** Nome, orari, servizi, cosa può dire e cosa no, voce (uomo o donna, con o senza accento).
-3. **Lo colleghiamo.** Un numero nuovo o il tuo numero di sempre (con l'inoltro di chiamata) e, se vuoi, il tuo calendario o gestionale e gli SMS di conferma.
-4. **Lo provi, lo sistemiamo insieme e parte.**
-
-I modelli girano tutti sul tuo Mac: si paga solo la linea telefonica (se usi Twilio).
-
-<p align="center">
-  <a href="https://cosmio.it/prenota?da=ai-caller"><strong>📅 Prenota la call gratuita con Cosmio</strong></a>
-</p>
-
 ## Sei uno sviluppatore?
 
 Il codice è tutto in questa repository. In [GUIDA-TECNICA.md](GUIDA-TECNICA.md) trovi come funziona, come avviarlo (anche solo dal browser) e come adattarlo alla tua attività.
@@ -102,9 +74,3 @@ Il codice è tutto in questa repository. In [GUIDA-TECNICA.md](GUIDA-TECNICA.md)
 npm install && npm run motore   # in un terminale: orecchie e voce
 npm start                       # in un altro: poi apri http://localhost:5050 (impostazioni su /admin)
 ```
-
----
-
-<p align="center">
-  Fatto da <a href="https://cosmio.it"><strong>Cosmio</strong></a>: automazioni e intelligenza artificiale per le aziende.
-</p>
