@@ -35,6 +35,14 @@ TTS_RIF_TESTO = os.environ.get('TTS_RIF_TESTO', '') or None
 
 STT_MLX = '/' in STT_MODELLO
 
+if __name__ == '__main__':
+    # porta occupata = c'è già un motore acceso: meglio dirlo subito che dopo aver caricato i modelli
+    import socket, sys
+    with socket.socket() as prova:
+        if prova.connect_ex(('127.0.0.1', PORTA)) == 0:
+            sys.exit(f'La porta {PORTA} è già occupata: probabilmente il motore vocale è già acceso '
+                     f'(curl http://127.0.0.1:{PORTA}/salute). Spegnilo o cambia MOTORE_PORTA nel .env.')
+
 
 def lavoratore_stt(richieste, risposte):
     # Processo a parte: così l'ascolto non aspetta mai che la voce finisca di generare.
