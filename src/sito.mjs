@@ -46,8 +46,73 @@ function collegamenti(html, base) {
   return [...out];
 }
 
+// --- design del sito: logo e colore principale, per le impostazioni (pannello admin, scheda Design) ---
+const assolutizza = (u, base) => {
+  try { const x = new URL(u, base); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; }
+};
+const contenuto = (html) => decodifica((html.match(/content=["']([^"']*)>/i)?.[1] || '').trim());
+const tagMeta = (html, nome) => contenuto(html.match(new RegExp(`<meta\\b[^>]*${nome}[^>]*>`, 'i'))?.[0] || '');
+
+const esadecimale = (s) => /^#[0-9a-f]{3}$/.test(s) || /^#[0-9a-f]{6}$/.test(s);
+// un colore "vivo" va bene come colore dell'attività: niente grigi, niente quasi bianco o nero
+function vivace(hex) {
+  let s = hex.slice(1); if (s.length === 3) s = [...s].map((c) => c + c).join('');
+  const n = parseInt(s, 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  return max - min > 60 && min > 0 && max < 252;
+}
+const aSei = (hex) => { let s = hex.slice(1); if (s.length === 3) s = [...s].map((c) => c + c).join(''); return '#' + s.toLowerCase(); };
+
+// Dai fogli di stile del sito (inline + al massimo 3 esterni): il colore che esce più spesso tra quelli "vivi".
+async function coloreDaCss(html, base, controlli) {
+  const pezzi = [];
+  for (const m of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) pezzi.push(m[1]);
+  for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+    if (pezzi.length > 3 || !/stylesheet/i.test(m[0])) continue;
+    const u = assolutizza(decodifica((m[0].match(/href=["']([^"']+)/i)?.[1] || '').trim()), base);
+    if (!u) continue;
+    try {
+      const r = await recupera(u, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Mozilla/5.0 (receptionist AI; lettura stili)' } }, controlli);
+      if (r.ok) pezzi.push((await r.text()).slice(0, 400000));
+    } catch {}
+  }
+  const conta = new Map();
+  for (const pezzo of pezzi) for (const c of pezzo.match(/#[0-9a-f]{3}\b|#[0-9a-f]{6}\b/gi) || []) conta.set(aSei(c).toUpperCase(), (conta.get(aSei(c).toUpperCase()) || 0) + 1);
+  const scelto = [...conta].sort((a, b) => b[1] - a[1]).find(([h]) => vivace(h));
+  return scelto ? aSei(scelto[0]) : '';
+}
+
+// Ridotto a un immagine del logo: prima le immagini "og:image" (di solito una grande con il marchio),
+// poi le icone dei link (apple-touch-icon e compagnie), poi la favicon.
+function logoDaHtml(html, base) {
+  const valido = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) && (x.pathname !== '/' || x.search); } catch { return false; } };
+  // prima le immagini social (og:image, di solito una grande con il marchio), poi le icone large, poi le altre
+  for (const nome of [/og:image/, /og:logo/, /twitter:image/]) {
+    const u = assolutizza(tagMeta(html, nome), base);
+    if (u && valido(u)) return u;
+  }
+  const icone = [];
+  for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+    const tag = m[0];
+    if (!/rel=("|')[^"']*icon[^"']*\1/i.test(tag)) continue;
+    const href = assolutizza(decodifica((tag.match(/href=("|')([^"']+)/i)?.[2] || '').trim()), base);
+    if (href && valido(href)) icone.push({ tag, href });
+  }
+  const grandi = icone.filter((x) => !/\.ico$/i.test(x.href) && (/apple-touch/i.test(x.tag) || /sizes=["'][1-9]\d{2,}/i.test(x.tag)));
+  const piccole = icone.filter((x) => !/\.ico$/i.test(x.href));
+  return grandi.find((x) => x.href)?.href || piccole[0]?.href || '';
+}
+
+// Logo e colore principale della home del sito (indirizzo base per gli indirizzi relativi).
+export async function datiDesign(html, base, controlli = {}) {
+  let colore = tagMeta(html, /theme-color/);
+  if (!esadecimale(colore.trim())) colore = await coloreDaCss(html, base, controlli);
+  return { logo: logoDaHtml(html, base), colore: colore && aSei(colore.trim()) };
+}
+
 // Legge fino a MAX_PAGINE pagine partendo dall'indirizzo dato: prima la home e le pagine "importanti".
-export async function leggiSito(indirizzo, { avanzamento = () => {}, risolvi } = {}) {
+// suPrimoHtml(html, base, controlli) riceve la home appena letta (per logo e colori, executor datiDesign).
+export async function leggiSito(indirizzo, { avanzamento = () => {}, risolvi, suPrimaPagina } = {}) {
   const controlli = { privati: false, ...(risolvi ? { risolvi } : {}) }; // solo siti pubblici (ALLOW_PRIVATE_FETCH=1 per la rete interna)
   let partenza = indirizzo.trim();
   if (!/^https?:\/\//i.test(partenza)) partenza = 'https://' + partenza;
@@ -55,6 +120,7 @@ export async function leggiSito(indirizzo, { avanzamento = () => {}, risolvi } =
   const daLeggere = [partenza.replace(/\/$/, '')];
   const visti = new Set(daLeggere);
   const pagine = [];
+  let primaHome = null;
   // anche la sitemap, se c'è, per non perdere pagine non collegate dal menu
   try {
     const r = await recupera(new URL('/sitemap.xml', partenza), { signal: AbortSignal.timeout(8000) }, controlli);
@@ -71,6 +137,7 @@ export async function leggiSito(indirizzo, { avanzamento = () => {}, risolvi } =
       const r = await recupera(u, { headers: { 'User-Agent': 'Mozilla/5.0 (receptionist AI; lettura informazioni pubbliche)', 'Accept-Language': 'it' }, signal: AbortSignal.timeout(12000) }, controlli);
       if (!r.ok || !/text\/html/i.test(r.headers.get('content-type') || '')) continue;
       const html = await r.text();
+      if (!primaHome) primaHome = { html, base: r.urlFinale };
       const p = testoDaHtml(html);
       if (p.testo.length > 80) pagine.push({ url: u, ...p });
       avanzamento(`lette ${pagine.length} pagine…`);
@@ -78,6 +145,7 @@ export async function leggiSito(indirizzo, { avanzamento = () => {}, risolvi } =
     } catch {}
   }
   if (!pagine.length) throw new Error('nessuna pagina leggibile a questo indirizzo');
+  if (primaHome && suPrimaPagina) await suPrimaPagina(primaHome.html, primaHome.base, controlli).catch(() => {});
   return pagine;
 }
 
@@ -127,10 +195,21 @@ export function avviaImportazione(indirizzo) {
   lavori.set(id, lavoro);
   (async () => {
     try {
-      const pagine = await leggiSito(indirizzo, { avanzamento: (m) => (lavoro.messaggio = m) });
+      const pagine = await leggiSito(indirizzo, {
+        avanzamento: (m) => (lavoro.messaggio = m),
+        // logo e colore principale della home, per la scheda Design
+        suPrimaPagina: async (html, base, controlli) => {
+          if (lavoro.designGiaPreso) return;
+          lavoro.designGiaPreso = true;
+          lavoro.messaggio = 'leggo il sito…';
+          const design = await datiDesign(html, base, controlli).catch(() => null);
+          if (design && (design.logo || design.colore)) lavoro.design = design;
+        },
+      });
       lavoro.pagine = pagine.map((p) => p.url);
       lavoro.messaggio = `lette ${pagine.length} pagine, Claude sta estraendo i dati…`;
       lavoro.dati = await estraiDati(pagine);
+      if (lavoro.design) lavoro.dati.design = lavoro.design;
       lavoro.stato = 'fatto';
       lavoro.messaggio = `fatto: ${pagine.length} pagine lette in ${Math.round((Date.now() - lavoro.inizio) / 1000)} s`;
     } catch (e) { lavoro.stato = 'errore'; lavoro.messaggio = e.message; }

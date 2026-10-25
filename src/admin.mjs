@@ -1,12 +1,17 @@
 // Pannello admin: attività, orari, agenda, calendari, email e SMS, più l'elenco degli appuntamenti.
 // Una pagina sola che parla con le API /api/<segreto>/... del server.
+import { temaCss } from './design.mjs';
+
 export function paginaAdmin({ api, web, feed }) {
   return `<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Impostazioni receptionist</title>
 <style>
-  :root { --sfondo:#f6f5f2; --testo:#1d1d1b; --tenue:#6b6a66; --accento:#2f6f5e; --bordo:#dedbd3; --carta:#fff; --rosso:#b03a2e; --giallo:#b7791f; }
-  @media (prefers-color-scheme: dark) { :root { --sfondo:#141413; --testo:#f1efe9; --tenue:#a19f98; --accento:#5fb39b; --bordo:#33322f; --carta:#1e1e1c; } }
+  ${temaCss(
+    ':root { --sfondo:#f6f5f2; --testo:#1d1d1b; --tenue:#6b6a66; --accento:#2f6f5e; --bordo:#dedbd3; --carta:#fff; --rosso:#b03a2e; --giallo:#b7791f; }',
+    ':root { --sfondo:#141413; --testo:#f1efe9; --tenue:#a19f98; --accento:#5fb39b; --bordo:#33322f; --carta:#1e1e1c; --rosso:#b03a2e; --giallo:#b7791f; }',
+    ['accento'],
+  )}
   * { box-sizing:border-box; }
   html, body { background:var(--sfondo); }
   body { margin:0; font:15px/1.45 system-ui, sans-serif; color:var(--testo); }
@@ -132,6 +137,16 @@ export function paginaAdmin({ api, web, feed }) {
       Google: Impostazioni → il calendario → "Indirizzo segreto in formato iCal". iCloud: condividi il calendario come pubblico e copia il link (webcal://). Outlook: Impostazioni → Calendari condivisi → Pubblica → ICS.</p>
     <textarea data-k="agenda.calendariOccupato" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"></textarea>
     <div class="riga" style="margin-top:10px"><button class="secondario" type="button" id="verificaCal">Verifica calendari</button><span id="esitoCal" class="aiuto" style="margin:0"></span></div>
+  </section>
+
+  <section data-scheda="Design">
+    <h2>L'aspetto delle pagine</h2>
+    <p class="aiuto">Logo, colore e tema della pagina per chiamare dal browser e del pannello "Fatti chiamare". Vuoto = l'aspetto di partenza. Con <strong>Importa dal sito</strong> (scheda Attività) si riempiono da soli: logo e colore principale del sito.</p>
+    <div class="griglia">
+      <div><label>Logo <small>(indirizzo completo, es. https://…/logo.png)</small></label><input data-k="design.logo" placeholder="https://lasercamp.it/logo.png"></div>
+      <div><label>Colore di accento <small>(es. #c9a227, vuoto = predefinito)</small></label><input data-k="design.colore" placeholder="#c9a227"></div>
+      <div><label>Tema</label><select data-k="design.tema"><option value="">automatico (segue il sistema)</option><option value="chiaro">chiaro</option><option value="scuro">scuro</option></select></div>
+    </div>
   </section>
 
   <section data-scheda="Cervello">
@@ -442,10 +457,11 @@ $('#sitoImporta').onclick = async () => {
     if (l.stato === 'errore') throw new Error(l.messaggio);
     const d = l.dati, metti1 = (k, v) => { const el = document.querySelector('[data-k="' + k + '"]'); if (el && v) el.value = v; };
     for (const k of ['nome', 'tipo', 'indirizzo', 'telefono', 'email', 'sito', 'servizi', 'domande', 'conoscenza']) metti1('attivita.' + k, d[k]);
+    if (d.design) { metti1('design.logo', d.design.logo); metti1('design.colore', d.design.colore); }
     if (d.saluto) metti1('receptionist.saluto', d.saluto.replace('{nome}', $('[data-k="receptionist.nome"]').value || 'Luca'));
     if (d.orariTrovati && d.orari) for (const [g, v] of Object.entries(d.orari)) { const el = document.querySelector('[data-k="orari.' + g + '"]'); if (el) el.value = v || ''; }
     $('#sitoEsito').textContent = '✅ ' + l.messaggio + '. Controlla i campi e premi Salva.';
-    $('#sitoNota').textContent = (d.orariTrovati ? 'Ho preso anche gli orari di apertura (scheda Orari). ' : 'Orari di apertura non trovati sul sito: mettili tu nella scheda Orari. ') + (d.nonTrovato || '');
+    $('#sitoNota').textContent = (d.orariTrovati ? 'Ho preso anche gli orari di apertura (scheda Orari). ' : 'Orari di apertura non trovati sul sito: mettili tu nella scheda Orari. ') + (d.design && (d.design.logo || d.design.colore) ? 'Ho preso anche logo e colore principale del sito (scheda Design). ' : '') + (d.nonTrovato || '');
   } catch (e) { $('#sitoEsito').textContent = '⚠️ ' + e.message; }
   $('#sitoImporta').disabled = false;
 };

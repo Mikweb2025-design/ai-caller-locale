@@ -2,6 +2,7 @@
 // Streams (μ-law 8 kHz, mark, clear), quindi passa per la stessa identica pipeline del telefono.
 // In più riceve la trascrizione e si può scrivere al receptionist come in una chat.
 import { impostazioni } from './impostazioni.mjs';
+import { temaCss, tagLogo } from './design.mjs';
 
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
@@ -10,11 +11,15 @@ export function paginaWeb({ ws, admin }) {
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chiama il receptionist</title>
 <style>
-  :root { --sfondo:#f6f5f2; --testo:#1d1d1b; --tenue:#6b6a66; --oro:#c9a227; --bordo:#dedbd3; --carta:#fff; --rosso:#c0392b; --verde:#2e8b57; }
-  @media (prefers-color-scheme: dark) { :root { --sfondo:#141413; --testo:#f1efe9; --tenue:#a19f98; --bordo:#33322f; --carta:#1e1e1c; } }
+  ${temaCss(
+    ':root { --sfondo:#f6f5f2; --testo:#1d1d1b; --tenue:#6b6a66; --oro:#c9a227; --bordo:#dedbd3; --carta:#fff; --rosso:#c0392b; --verde:#2e8b57; }',
+    ':root { --sfondo:#141413; --testo:#f1efe9; --tenue:#a19f98; --oro:#c9a227; --bordo:#33322f; --carta:#1e1e1c; --rosso:#c0392b; --verde:#2e8b57; }',
+    ['oro'],
+  )}
   * { box-sizing:border-box; }
   html, body { background:var(--sfondo); }
   body { margin:0; min-height:100vh; font:16px/1.45 system-ui, sans-serif; color:var(--testo); display:flex; justify-content:center; }
+  .logo { height:48px; max-width:220px; object-fit:contain; margin-bottom:8px; }
   main { width:100%; max-width:560px; padding:24px 16px; display:flex; flex-direction:column; gap:16px; min-height:100vh; }
   h1 { font-size:21px; margin:0; }
   .tenue { color:var(--tenue); font-size:14px; margin:0; }
@@ -35,6 +40,7 @@ export function paginaWeb({ ws, admin }) {
 </style></head>
 <body><main>
   <div>
+    ${tagLogo()}
     <h1>📞 ${esc(impostazioni().attivita.nome)}</h1>
     <p class="tenue">Chiamata di prova dal browser. Meglio con le cuffie: così il receptionist non sente sé stesso. <a href="${esc(admin)}">⚙️ Impostazioni</a></p>
   </div>

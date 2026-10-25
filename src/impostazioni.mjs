@@ -67,6 +67,13 @@ export const PREDEFINITE = {
   // lingue: l'italiano c'è sempre; con il tedesco il receptionist risponde nella lingua di chi chiama
   lingue: { tedesco: false, salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?' },
   // calendari CalDAV collegati: { id, servizio, nome, url, utente, password, calendario, calendarioNome, leggi, scrivi }
+  // l'aspetto delle pagine (pannello e chiamata dal browser): si modifica nel pannello, oppure si
+  // riempiono da sole con "Importa dal sito" (logo e colore principale della home del sito)
+  design: {
+    logo: '', // indirizzo completo dell'immagine (http/https)
+    colore: '', // colore di accento, "#c9a227"; vuoto = predefinito
+    tema: '', // 'chiaro', 'scuro', o vuoto = segue il sistema
+  },
   calendari: [],
   email: {
     attiva: false,
@@ -138,6 +145,11 @@ export function salvaImpostazioni(nuove) {
   const tutte = unisci(PREDEFINITE, unisci(attuali, nuove));
   if (Array.isArray(nuove?.calendari)) tutte.calendari = nuove.calendari; // l'elenco arriva sempre intero
   for (const g of GIORNI) tutte.orari[g] = String(tutte.orari[g] || '').trim();
+  if (tutte.design) {
+    tutte.design.logo = String(tutte.design.logo || '').trim();
+    tutte.design.colore = String(tutte.design.colore || '').trim();
+    tutte.design.tema = ['chiaro', 'scuro'].includes(tutte.design.tema) ? tutte.design.tema : '';
+  }
   delete tutte.receptionist.personaggio;
   delete tutte.twilio.segretoImpostato;
   delete tutte.twilio.authTokenImpostato;
@@ -177,5 +189,9 @@ export function controllaImpostazioni(i) {
   for (const g of GIORNI) { try { fasce(i.orari?.[g]); } catch (e) { errori.push(`${g}: ${e.message}`); } }
   const d = Number(i.agenda?.durataMinuti);
   if (!(d >= 5 && d <= 600)) errori.push('la durata di un appuntamento va da 5 a 600 minuti');
+  const vista = i.design || {};
+  if (vista.colore && !/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(String(vista.colore).trim())) errori.push('il colore di accento deve essere un codice esadecimale, per esempio #c9a227');
+  if (vista.tema && !['chiaro', 'scuro'].includes(vista.tema)) errori.push("il tema è 'chiaro', 'scuro' o vuoto (segue il sistema)");
+  if (vista.logo && !/^https?:\/\//i.test(String(vista.logo).trim())) errori.push('logo: serve un indirizzo completo che comincia con http o https');
   return errori;
 }
