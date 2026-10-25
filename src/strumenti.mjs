@@ -2,21 +2,28 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONFIG, RADICE, twilioConfigurato } from './config.mjs';
-import { testoSms, martediProssimo } from './persona.mjs';
+import { prenota, testoConferma } from './agenda.mjs';
+import { impostazioni } from './impostazioni.mjs';
 
 const cartella = join(RADICE, 'registrazioni');
 mkdirSync(cartella, { recursive: true });
 
-export async function confermaAppuntamento(argomenti, chiamata) {
-  const appuntamento = { ...argomenti, giorno: martediProssimo().iso, telefono: chiamata.chiamante, quando: new Date().toISOString(), versione: chiamata.versione };
-  appendFileSync(join(cartella, 'appuntamenti.jsonl'), JSON.stringify(appuntamento) + '\n');
-  chiamata.log('📅 appuntamento', appuntamento);
+export async function confermaAppuntamento({ nome, giorno, ora, dettagli, email }, chiamata) {
+  const telefono = chiamata.chiamante && chiamata.chiamante !== 'browser' ? chiamata.chiamante : '';
+  let esito;
+  try {
+    esito = await prenota({ nome, giorno, ora, dettagli, email, telefono, canale: chiamata.versione === 'web' ? 'browser' : 'telefono' });
+  } catch (e) {
+    chiamata.log('⚠️ appuntamento non registrato:', e.message);
+    return { ok: false, errore: e.message };
+  }
+  appendFileSync(join(cartella, 'appuntamenti.jsonl'), JSON.stringify(esito.appuntamento) + '\n');
+  chiamata.log('📅 appuntamento', esito.appuntamento, esito.errore ? `⚠️ email: ${esito.errore}` : `email titolare: ${esito.emailTitolare}, cliente: ${esito.emailCliente}`);
 
   let sms = 'non inviato';
-  const destinatario = chiamata.chiamante;
-  if (CONFIG.inviaSms && twilioConfigurato() && destinatario && destinatario.startsWith('+') && destinatario !== CONFIG.twilio.numero) {
+  if (impostazioni().sms.attivo && twilioConfigurato() && telefono.startsWith('+') && telefono !== CONFIG.twilio.numero) {
     try {
-      await inviaSms(destinatario, testoSms(argomenti));
+      await inviaSms(telefono, testoConferma(esito.appuntamento));
       sms = 'inviato';
     } catch (e) {
       chiamata.log('⚠️ SMS non partito:', e.message);
@@ -24,7 +31,7 @@ export async function confermaAppuntamento(argomenti, chiamata) {
     }
   }
   chiamata.log('✉️ SMS', sms);
-  return { ok: true, appuntamento: 'registrato', sms: sms === 'inviato' ? 'inviato' : 'in coda, arriva a momenti' };
+  return { ok: true, ...esito, sms };
 }
 
 async function inviaSms(a, testo) {

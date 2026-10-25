@@ -1,11 +1,11 @@
 // Chiamata dal browser: la pagina parla con il server lo stesso protocollo di Twilio Media
 // Streams (μ-law 8 kHz, mark, clear), quindi passa per la stessa identica pipeline del telefono.
 // In più riceve la trascrizione e si può scrivere al receptionist come in una chat.
-import { OFFICINA } from './persona.mjs';
+import { impostazioni } from './impostazioni.mjs';
 
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
-export function paginaWeb({ ws }) {
+export function paginaWeb({ ws, admin }) {
   return `<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chiama il receptionist</title>
@@ -35,8 +35,8 @@ export function paginaWeb({ ws }) {
 </style></head>
 <body><main>
   <div>
-    <h1>📞 ${esc(OFFICINA.nome)}</h1>
-    <p class="tenue">Chiamata di prova dal browser. Meglio con le cuffie: così il receptionist non sente sé stesso.</p>
+    <h1>📞 ${esc(impostazioni().attivita.nome)}</h1>
+    <p class="tenue">Chiamata di prova dal browser. Meglio con le cuffie: così il receptionist non sente sé stesso. <a href="${esc(admin)}">⚙️ Impostazioni</a></p>
   </div>
   <div class="barra">
     <button id="chiama">Chiama</button>

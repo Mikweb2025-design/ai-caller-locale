@@ -51,7 +51,9 @@ Il receptionist AI risponde al primo squillo, ogni volta. Accoglie il cliente, c
 | **Voce** | [Qwen3-TTS](https://huggingface.co/Qwen) (open source, Apache 2.0) su MLX: primo audio in ~0,2 s, anche clonando una voce italiana da un campione |
 | **Telefono** | Twilio, facoltativo. Per provarlo basta il browser: microfono, altoparlante e chat |
 
-Su un Mac con Apple Silicon il receptionist risponde in circa 1,5–2 secondi dalla fine della frase del cliente.
+Su un Mac con Apple Silicon il receptionist risponde in circa 2 secondi dalla fine della frase del cliente.
+
+**Pannello admin** (`/admin`): orari di apertura e chiusure, posti liberi veri, calendario da abbonarsi in Google/Apple/Outlook, impegni dei tuoi calendari che bloccano gli orari, email di conferma, SMS ed elenco degli appuntamenti.
 
 ## Per chi è
 
@@ -84,7 +86,7 @@ Il codice è tutto in questa repository. In [GUIDA-TECNICA.md](GUIDA-TECNICA.md)
 
 ```bash
 npm install && npm run motore   # in un terminale: orecchie e voce
-npm start                       # in un altro: poi apri http://localhost:5050
+npm start                       # in un altro: poi apri http://localhost:5050 (impostazioni su /admin)
 ```
 
 ---

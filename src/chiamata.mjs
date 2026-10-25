@@ -3,21 +3,13 @@
 // Funziona uguale per Twilio e per la chiamata dal browser (stesso protocollo Media Streams).
 import { CONFIG } from './config.mjs';
 import { istruzioni, saluto } from './persona.mjs';
+import { postiPerIstruzioni } from './agenda.mjs';
 import { confermaAppuntamento } from './strumenti.mjs';
 import { Cervello } from './cervello.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta } from './voce.mjs';
 
 const FRAME_MS = 20;
 const RIEMPITIVO = 'Mmh, allora...';
-
-// Claude non ha strumenti veri: per le azioni scrive dei marcatori che il cliente non sente.
-const AZIONI = `
-# Azioni (importante)
-Non hai strumenti da chiamare: quando le istruzioni dicono di chiamare uno strumento, scrivi invece un marcatore alla fine della risposta, dopo le parole da dire. Il marcatore non viene letto al cliente.
-- Al posto di "conferma_appuntamento": <<CONFERMA|nome|ora|auto>> (es. <<CONFERMA|Marco Rossi|9:00|Alfa Romeo Giulia 2019>>), una volta sola.
-- Al posto di "termina_chiamata": <<FINE>>, subito dopo il saluto finale.
-Il passo 1 è già fatto: hai già risposto al telefono dicendo "${saluto()}" e il cliente l'ha sentito. Non ripetere mai il saluto, non ripresentarti e non dire di nuovo il nome dell'officina: rispondi direttamente alla sua prima frase (se chiede un appuntamento, passa subito al passo 2).
-Ogni messaggio che ricevi è la trascrizione automatica di quello che ha detto il cliente: può contenere errori di ascolto, interpretala con buon senso.`;
 
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
 function separa(testo) {
@@ -37,8 +29,11 @@ function taglio(s, primo = false) {
   return -1;
 }
 
-export function preparaCervello(chiamante) {
-  return new Cervello(istruzioni({ perTts: true, chiamante, fine: 'termina_chiamata' }) + AZIONI);
+// Le istruzioni si rifanno a ogni chiamata: impostazioni e posti liberi sono sempre quelli di adesso.
+export async function preparaCervello(chiamante) {
+  let posti = '';
+  try { posti = await postiPerIstruzioni(); } catch (e) { console.error('posti liberi non calcolati:', e.message); }
+  return new Cervello(istruzioni({ chiamante, posti }));
 }
 
 const inAttesa = new Map(); // callSid → Cervello aperto mentre squilla
@@ -46,12 +41,13 @@ export function preriscalda(callSid, chiamante) {
   if (!callSid || inAttesa.has(callSid)) return;
   const c = preparaCervello(chiamante);
   inAttesa.set(callSid, c);
-  setTimeout(() => { if (inAttesa.get(callSid) === c) { inAttesa.delete(callSid); c.chiudi(); } }, 60000).unref();
+  setTimeout(() => { if (inAttesa.get(callSid) === c) { inAttesa.delete(callSid); c.then((x) => x.chiudi()); } }, 60000).unref();
 }
 
 export function gestisciChiamata(chiamata) {
   const v = CONFIG.vad;
   let cervello = null;
+  let cervelloPronto = null; // Claude si avvia mentre parte il saluto
   let parlando = false; // il cliente sta parlando
   let voce = 0, muto = 0; // frame consecutivi sopra/sotto soglia
   let preRoll = [];
@@ -111,6 +107,7 @@ export function gestisciChiamata(chiamata) {
     }
     chiamata.log(`👤 ${detto} (ascolto ${t.ms} ms${t.voce_occupata ? ", voce occupata" : ""})`);
     testo('cliente', detto);
+    await cervelloPronto;
     nuovoTurno(detto);
   }
 
@@ -150,8 +147,8 @@ export function gestisciChiamata(chiamata) {
       for (const a of azioni) {
         chiamata.log(`🔧 ${a.tipo}`, a.argomenti);
         if (a.tipo === 'CONFERMA') {
-          const [nome, ora, auto] = a.argomenti;
-          await confermaAppuntamento({ nome, ora, auto }, chiamata);
+          const [nome, giorno, ora, dettagli, email] = a.argomenti;
+          await confermaAppuntamento({ nome, giorno, ora, dettagli, email }, chiamata);
         }
         if (a.tipo === 'FINE' && !chiudere) {
           chiudere = true;
@@ -165,10 +162,10 @@ export function gestisciChiamata(chiamata) {
   }
 
   chiamata.alPartire = async () => {
-    cervello = inAttesa.get(chiamata.callSid);
-    if (cervello) inAttesa.delete(chiamata.callSid);
-    else cervello = preparaCervello(chiamata.chiamante);
-    collegaCervello();
+    const pronto = inAttesa.get(chiamata.callSid) || preparaCervello(chiamata.chiamante);
+    inAttesa.delete(chiamata.callSid);
+    cervelloPronto = pronto;
+    // il saluto parte subito, Claude intanto si avvia
     const s = saluto();
     testo('receptionist', s);
     chiamata.log(`🤖 ${s}`);
@@ -176,11 +173,15 @@ export function gestisciChiamata(chiamata) {
     const audio = await frasePronta(s);
     chiamata.log(`⏱ saluto pronto in ${Date.now() - t} ms`);
     inviaAudio(audio);
+    cervello = await pronto;
+    collegaCervello();
+    if (chiamata.chiusa) cervello.chiudi();
   };
 
   // Frase scritta (chat dal browser): come se l'avesse detta.
-  chiamata.alTestoScritto = (t) => {
-    if (!cervello || !t.trim()) return;
+  chiamata.alTestoScritto = async (t) => {
+    if (!cervelloPronto || !t.trim()) return;
+    await cervelloPronto;
     chiamata.log(`⌨️ ${t}`);
     testo('cliente', t.trim());
     fineTurno = Date.now();

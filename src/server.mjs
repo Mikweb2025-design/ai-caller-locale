@@ -12,6 +12,9 @@ import { paginaPannello } from './pannello.mjs';
 import { paginaWeb } from './web.mjs';
 import { saluto } from './persona.mjs';
 import { frasePronta } from './voce.mjs';
+import { paginaAdmin } from './admin.mjs';
+import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
+import { appuntamenti, annulla, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
 
 const segreto = process.env.SEGRETO || 'locale';
 if (CONFIG.urlPubblico && !process.env.SEGRETO) console.warn('⚠️ Manca SEGRETO nel .env: il webhook e il pannello hanno un indirizzo facile da indovinare.');
@@ -59,7 +62,47 @@ const server = http.createServer(async (req, res) => {
 
     // Chiamata dal browser: microfono, altoparlante e chat
     if (req.method === 'GET' && (url.pathname === `/web/${segreto}` || (url.pathname === '/' && segreto === 'locale'))) {
-      return html(paginaWeb({ ws: `/media/web/${segreto}` }));
+      return html(paginaWeb({ ws: `/media/web/${segreto}`, admin: segreto === 'locale' ? '/admin' : `/admin/${segreto}` }));
+    }
+
+    // Pannello admin: impostazioni, calendari, email, appuntamenti
+    if (req.method === 'GET' && (url.pathname === `/admin/${segreto}` || (url.pathname === '/admin' && segreto === 'locale'))) {
+      const base = CONFIG.urlPubblico || `http://${req.headers.host}`;
+      return html(paginaAdmin({ api: `/api/${segreto}`, web: segreto === 'locale' ? '/' : `/web/${segreto}`, feed: `${base}/calendario/${segreto}.ics` }));
+    }
+    if (url.pathname.startsWith(`/api/${segreto}/`)) {
+      const percorso = url.pathname.slice(`/api/${segreto}`.length);
+      const corpo = req.method === 'POST' ? JSON.parse((await leggiCorpo(req)) || '{}') : null;
+      if (percorso === '/impostazioni' && req.method === 'GET') return json(200, impostazioniPubbliche());
+      if (percorso === '/impostazioni' && req.method === 'POST') {
+        const prova = structuredClone(impostazioni());
+        for (const [sez, v] of Object.entries(corpo)) if (typeof v === 'object' && prova[sez]) Object.assign(prova[sez], v);
+        const errori = controllaImpostazioni(prova);
+        if (errori.length) return json(400, { errore: errori.join('; ') });
+        salvaImpostazioni(corpo);
+        await impegniEsterni({ forza: true }).catch(() => {});
+        return json(200, impostazioniPubbliche());
+      }
+      if (percorso === '/appuntamenti') return json(200, { appuntamenti: appuntamenti() });
+      const m = percorso.match(/^\/appuntamenti\/([a-f0-9]+)\/annulla$/);
+      if (m && req.method === 'POST') { const a = annulla(m[1]); return a ? json(200, a) : json(404, { errore: 'appuntamento non trovato' }); }
+      if (percorso === '/posti') return json(200, { posti: await postiLiberi() });
+      if (percorso === '/calendari/verifica' && req.method === 'POST') {
+        const { eventi, errori } = await leggiCalendari(corpo.calendariOccupato);
+        const ora = new Date();
+        const prossimo = eventi.filter((e) => e.fine > ora).sort((a, b) => a.inizio - b.inizio)[0];
+        return json(200, { eventi: eventi.length, errori, prossimo: prossimo ? `${prossimo.titolo || 'impegno'} il ${inRoma(prossimo.inizio).iso}` : null });
+      }
+      if (percorso === '/email/prova' && req.method === 'POST') {
+        try { await emailDiProva(String(corpo.a || '')); return json(200, { ok: true }); } catch (e) { return json(400, { errore: e.message }); }
+      }
+      return json(404, { errore: 'non trovato' });
+    }
+
+    // Calendario da abbonarsi (Google Calendar, Apple Calendario, Outlook)
+    if (req.method === 'GET' && url.pathname === `/calendario/${segreto}.ics`) {
+      res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(ics());
     }
 
     // Pannello: fatti chiamare al telefono
@@ -116,8 +159,10 @@ const prepara = () => Promise.all([frasePronta(saluto()), frasePronta('Mmh, allo
   .then(() => console.log('🔊 saluto pronto'))
   .catch(() => { console.log('⏳ motore vocale non ancora acceso (npm run motore), riprovo...'); setTimeout(prepara, 5000).unref(); });
 prepara();
+alCambio(() => { frasePronta(saluto()).catch(() => {}); }); // saluto nuovo: si prepara subito
 
 server.listen(CONFIG.porta, () => {
   console.log(`Receptionist in ascolto sulla porta ${CONFIG.porta}`);
   console.log(`Chiamata dal browser: http://localhost:${CONFIG.porta}/${segreto === 'locale' ? '' : `web/${segreto}`}`);
+  console.log(`Impostazioni:        http://localhost:${CONFIG.porta}/admin${segreto === 'locale' ? '' : `/${segreto}`}`);
 });

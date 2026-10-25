@@ -14,7 +14,7 @@ browser (web.mjs)  ─┘   Media Streams   │     └─  /tts  Qwen3-TTS, in 
 - **Un solo protocollo.** Twilio e la pagina web parlano lo stesso protocollo Media Streams (μ-law 8 kHz, `mark`, `clear`), quindi passano per la stessa pipeline in `src/chiamata.mjs`. La pagina web in più riceve la trascrizione e può scrivere al receptionist come in una chat.
 - **Fine frase.** VAD a energia sul server: `VAD_SILENZIO_MS` (750 ms) di silenzio chiudono la frase, che va al motore per la trascrizione.
 - **Cervello.** Per ogni chiamata parte un processo `claude -p --input-format stream-json --output-format stream-json --include-partial-messages`, senza strumenti, senza MCP e senza impostazioni del progetto, con le istruzioni di `persona.mjs` come system prompt e `MAX_THINKING_TOKENS=0`. Per le telefonate Twilio parte mentre il telefono squilla.
-- **Azioni.** Claude non ha strumenti: per registrare l'appuntamento e riagganciare scrive i marcatori `<<CONFERMA|nome|ora|auto>>` e `<<FINE>>`, che il server esegue e non fa sentire.
+- **Azioni.** Claude non ha strumenti: per registrare l'appuntamento e riagganciare scrive i marcatori `<<CONFERMA|nome|AAAA-MM-GG|HH:MM|dettagli>>` e `<<FINE>>`, che il server esegue e non fa sentire. I posti liberi gli arrivano nelle istruzioni a ogni chiamata.
 - **Voce.** Il testo di Claude arriva token per token; appena c'è una frase intera (almeno 20 caratteri) va a Qwen3-TTS, che restituisce l'audio a pezzi mentre lo genera. Saluto e riempitivo ("Mmh, allora...") sono pronti in memoria dall'avvio.
 - **Interruzioni.** Se il cliente parla sopra al receptionist, il server svuota l'audio (`clear`), interrompe la sintesi e ignora il resto della risposta.
 - **Motore.** La trascrizione gira in un processo separato, così non aspetta mai che la voce finisca di generare.
@@ -27,6 +27,9 @@ src/
   voce.mjs           client del motore vocale, codifica μ-law
   web.mjs            pagina per chiamare dal browser (microfono + chat)
   persona.mjs        chi è il receptionist, come parla, cosa sa, come va la chiamata
+  impostazioni.mjs   impostazioni del pannello admin (dati/impostazioni.json)
+  agenda.mjs         posti liberi, appuntamenti, calendari iCal, email di conferma
+  admin.mjs          pagina del pannello admin
   strumenti.mjs      registrazione dell'appuntamento, SMS, chiamate in uscita (Twilio)
   twilio-stream.mjs  lato Twilio della chiamata: audio, marche, riaggancio
   pannello.mjs       pagina del pannello
@@ -48,6 +51,18 @@ prove/               chiamate simulate e misure dei ritardi
 2. `cp .env.example .env` (i valori predefiniti vanno già bene per provare in locale).
 3. `npm run motore` e aspetta "Motore vocale pronto".
 4. In un altro terminale `npm start` e apri **http://localhost:5050**: premi Chiama e parla (meglio con le cuffie), oppure scrivi in chat.
+5. Le impostazioni sono su **http://localhost:5050/admin**.
+
+## Pannello admin
+
+Tutto si cambia da `/admin` (con `SEGRETO`: `/admin/<SEGRETO>`) e vale dalla chiamata successiva. I dati stanno in `dati/impostazioni.json` e `dati/appuntamenti.json`.
+- **Appuntamenti:** elenco e annullamento. "Da verificare" = il cliente ha preso un orario già occupato o fuori orario.
+- **Attività e Receptionist:** nome, indirizzo, servizi, cosa chiedere a chi prenota, saluto, istruzioni in più.
+- **Orari:** fasce per giorno, chiusure straordinarie, durata degli appuntamenti, quanti in contemporanea, preavviso, quanto avanti si prenota. Il receptionist propone solo i posti davvero liberi.
+- **Calendari:**
+  - l'indirizzo `/calendario/<SEGRETO>.ics` si aggiunge come abbonamento in Google Calendar, Apple Calendario o Outlook e mostra gli appuntamenti;
+  - gli indirizzi iCal privati dei tuoi calendari bloccano gli orari in cui sei impegnato (letti ogni 5 minuti; gli eventi ricorrenti contano solo alla prima occorrenza).
+- **Email e SMS:** server SMTP (con Gmail: smtp.gmail.com, porta 465 sicura, password per le app). A ogni prenotazione parte un'email al titolare e, se il cliente ha lasciato l'email, la conferma a lui, tutte e due con l'evento allegato. Gli SMS passano da Twilio.
 
 ### Con il numero Twilio
 
@@ -57,20 +72,14 @@ prove/               chiamate simulate e misure dei ritardi
 
 ## La voce
 
-- `TTS_VOCE` sceglie uno speaker di Qwen3-TTS (`ryan` è il predefinito; `serena` e `vivian` per una voce femminile). Gli speaker non sono italiani madrelingua: si capiscono benissimo, ma con un filo di accento.
-- Per un italiano madrelingua clona una voce: `TTS_MODELLO=mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit`, `TTS_RIF_AUDIO` = un wav a 24 kHz di 5–15 secondi, `TTS_RIF_TESTO` = cosa si dice. Usa solo voci di cui hai il consenso.
-- I modelli 1.7B suonano meglio ma sono più lenti.
+- La voce predefinita è `voci/receptionist.wav`: un uomo milanese sui 35 anni, professionale e pacato. È stata creata con Qwen3-TTS VoiceDesign e il motore la clona a ogni frase con il modello Base 0.6B.
+- Per crearne un'altra: cambia la descrizione in `motore/disegna-voce.py` e lancia `python3 motore/disegna-voce.py 4`. Ascolta le proposte in `voci/`, poi copia la migliore (5–10 secondi) in `voci/receptionist.wav` e il suo testo in `voci/testo.txt`. Si può usare anche una registrazione vera, con il consenso di chi parla.
+- `TTS_TEMPERATURA` (0.3) tiene la voce calma e regolare: più alta = più espressiva e meno prevedibile.
+- Senza campione si usano gli speaker di Qwen3-TTS CustomVoice (`TTS_VOCE`), che però hanno un filo di accento straniero.
 
 ## Adattarlo alla tua attività
 
-Tutto il personaggio è in `src/persona.mjs`:
-- `OFFICINA`: nome, indirizzo, orari;
-- `RECEPTIONIST`: nome e genere, presi dal `.env`;
-- `martediProssimo()`: il giorno con i posti liberi;
-- `istruzioni()`: tono, flusso della chiamata, cosa non deve mai dire o promettere (c'è anche il personaggio `napoletano`);
-- `saluto()`: la prima frase.
-
-Dopo una modifica riavvia il server.
+Quasi tutto si fa dal pannello admin. Il modo di parlare (tono, regole, flusso della chiamata) è in `src/persona.mjs`.
 
 ## Prove senza telefono
 
@@ -83,8 +92,9 @@ Dopo una modifica riavvia il server.
 
 - Trascrizione: Parakeet v3 ~0,1–0,2 s a frase; faster-whisper `small` su CPU ~1,1 s.
 - Claude Code (Haiku, senza ragionamento): primo testo ~0,9–1,7 s.
-- Qwen3-TTS 0.6B 8 bit: primo audio ~0,2 s, circa tre volte più veloce del tempo reale.
-- Dalla fine della frase del cliente al primo audio: ~1,3–2,2 s.
+- Qwen3-TTS 0.6B 8 bit con voce clonata: primo audio ~0,2–0,3 s, circa due volte e mezza più veloce del tempo reale.
+- Dalla fine della frase del cliente al primo audio: ~2–2,5 s.
+- La trascrizione con MLX costa ~1 s la prima volta che vede una lunghezza nuova: per questo l'audio si arrotonda a blocchi di 2 secondi, preparati all'avvio (~0,1 s a frase).
 - Qwen3-TTS 0.6B ogni tanto sbaglia sui frammenti di due o tre parole o non si ferma più: per questo le frasi si mandano intere e l'audio ha un tetto di lunghezza.
 
 ## Note
