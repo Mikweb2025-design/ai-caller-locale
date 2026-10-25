@@ -92,7 +92,14 @@ export async function leggiEventi(conto, calendario, da, a) {
 // Crea o aggiorna (sposta) un evento: PUT del file .ics. Restituisce l'indirizzo dell'evento.
 export async function salvaEvento(conto, calendario, { uid, ics, hrefEsistente }) {
   const url = hrefEsistente || assoluto(calendario.endsWith('/') ? calendario : calendario + '/', `${encodeURIComponent(uid)}.ics`);
-  await richiesta(conto, 'PUT', url, { corpo: ics, tipo: 'text/calendar; charset=utf-8', extra: hrefEsistente ? {} : { 'If-None-Match': '*' } });
+  try {
+    await richiesta(conto, 'PUT', url, { corpo: ics, tipo: 'text/calendar; charset=utf-8', extra: hrefEsistente ? {} : { 'If-None-Match': '*' } });
+  } catch (e) {
+    // l'evento è già sul server ma qui si era perso il riferimento (es. appuntamento preso
+    // prima che il conto fosse collegato): lo riscrivo sopra, il calendario resta di nostra mano.
+    if (!hrefEsistente && /HTTP 412/.test(e.message)) await richiesta(conto, 'PUT', url, { corpo: ics, tipo: 'text/calendar; charset=utf-8' });
+    else throw e;
+  }
   return url;
 }
 

@@ -22,7 +22,7 @@ import { SERVIZI_CERVELLO, elencaModelli, provaConversazione } from './cervello.
 import { istruzioni } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
 import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
-import { appuntamenti, annulla, sposta, richiamoFatto, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
+import { appuntamenti, annulla, sposta, richiamoFatto, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma, sincronizzaManca } from './agenda.mjs';
 
 const segreto = SEGRETO;
 if (urlPubblico() && !process.env.SEGRETO) console.error('⚠️ URL pubblico impostato ma manca SEGRETO nel .env: il server rifiuta le richieste da internet finché non lo metti.');
@@ -122,6 +122,7 @@ const server = http.createServer(async (req, res) => {
         if (errori.length) return json(400, { errore: errori.join('; ') });
         salvaImpostazioni(corpo);
         await impegniEsterni({ forza: true }).catch(() => {});
+        sincronizzaManca().catch((e) => console.warn('⚠️ risincronizzazione calendario:', e.message));
         return json(200, impostazioniPubbliche());
       }
       if (percorso === '/appuntamenti') return json(200, { appuntamenti: appuntamenti() });

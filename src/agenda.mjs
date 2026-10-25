@@ -71,6 +71,20 @@ export async function sposta(id, giorno, ora) {
 // --- calendari CalDAV collegati (Nextcloud, iCloud, ...) ---
 const conti = () => (impostazioni().calendari || []).filter((c) => c.url && c.utente && c.calendario);
 
+// Rimette in calendario gli appuntamenti presi quando un conto era scollegato o sbagliato:
+// solo i futuri confermati senza la voce di quel conto. Restituisce quanti ne ha sistemati.
+export async function sincronizzaManca() {
+  let fatti = 0;
+  const oggi = inRoma().iso;
+  for (const a of appuntamenti()) {
+    if (a.tipo || a.stato !== 'confermato' || (a.giorno || '') < oggi) continue;
+    if (conti().every((c) => !c.scrivi || a.calendari?.[c.id])) continue;
+    await sincronizza(a);
+    fatti++;
+  }
+  return fatti;
+}
+
 // Porta l'appuntamento in ogni calendario con la scrittura attiva: crea, aggiorna o cancella.
 export async function sincronizza(a) {
   const errori = [];
