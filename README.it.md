@@ -157,7 +157,7 @@ Tutto si modifica da `/admin` (o `/admin/<SEGRETO>`), e le modifiche valgono dal
 |---|---|
 | **Appuntamenti** | Gli appuntamenti presi dal receptionist, con **Sposta** e **Annulla** (anche nei calendari collegati). "Da verificare" significa che chi chiama ha avuto un orario già occupato o fuori orario: guardalo tu. In cima stanno anche i **richiami promessi** ("un collega la richiamerà"): nome, telefono e motivo; quando li hai richiamati premi **Fatto**. |
 | **Attività** | Nome, indirizzo, telefono, email, servizi, cosa chiedere a chi prenota, la "scheda per il telefono" (tutto quello che il receptionist deve sapere). Qui c'è il riquadro **Importa dal sito**. |
-| **Design** | Logo, colore di accento e tema delle pagine per chiamare dal browser e del pannello "Fatti chiamare". Vuoto = l'aspetto di partenza. Si riempiono da soli con **Importa dal sito** (logo e colore principale della home). |
+| **Design** | Logo, colore di accento e tema delle pagine per chiamare dal browser e del pannello "Fatti chiamare", con un'**anteprima** mentre li cambi. Vuoto = l'aspetto di partenza. Si riempiono da soli con **Importa dal sito** o col pulsante **Prendi logo e colore dal sito** (legge solo la home). |
 | **Receptionist** | Nome, genere (per l'italiano "pronto/pronta"), saluto, istruzioni in più, tedesco sì/no. |
 | **Orari** | Orari di apertura per giorno, chiusure straordinarie, durata dell'appuntamento, quanti in contemporanea, preavviso minimo, quanto avanti si prenota, quanti posti proporre e l'elenco dei prossimi posti liberi. |
 | **Calendari** | Account CalDAV, l'abbonamento, gli indirizzi iCal privati che bloccano gli orari. |

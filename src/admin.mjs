@@ -141,12 +141,15 @@ export function paginaAdmin({ api, web, feed }) {
 
   <section data-scheda="Design">
     <h2>L'aspetto delle pagine</h2>
-    <p class="aiuto">Logo, colore e tema della pagina per chiamare dal browser e del pannello "Fatti chiamare". Vuoto = l'aspetto di partenza. Con <strong>Importa dal sito</strong> (scheda Attività) si riempiono da soli: logo e colore principale del sito.</p>
+    <p class="aiuto">Logo, colore e tema della pagina per chiamare dal browser e del pannello "Fatti chiamare". Vuoto = l'aspetto di partenza. Si riempiono da soli anche con <strong>Importa dal sito</strong> (scheda Attività).</p>
     <div class="griglia">
       <div><label>Logo <small>(indirizzo completo, es. https://…/logo.png)</small></label><input data-k="design.logo" placeholder="https://lasercamp.it/logo.png"></div>
       <div><label>Colore di accento <small>(es. #c9a227, vuoto = predefinito)</small></label><input data-k="design.colore" placeholder="#c9a227"></div>
       <div><label>Tema</label><select data-k="design.tema"><option value="">automatico (segue il sistema)</option><option value="chiaro">chiaro</option><option value="scuro">scuro</option></select></div>
     </div>
+    <div class="riga" style="margin-top:12px;flex-wrap:wrap"><input id="designUrl" placeholder="es. lasercamp.it (vuoto = il sito nell'attività)" style="max-width:320px"><button class="secondario" type="button" id="designSito">Prendi logo e colore dal sito</button><span class="esito" id="designEsito"></span></div>
+    <p class="aiuto" style="margin-top:6px">Fuori da qui si vedono solo dopo <strong>Salva</strong>, che cambia l'aspetto del pannello e della pagina per chiamare dal browser.</p>
+    <div id="designAnteprima" style="margin-top:12px"></div>
   </section>
 
   <section data-scheda="Cervello">
@@ -343,6 +346,7 @@ function riempi() {
   $('#twInfo').textContent = dati.twilio.segretoImpostato ? '(impostato)' : '';
   $('#twInfoAuth').textContent = dati.twilio.authTokenImpostato ? '(impostato)' : '';
   statoTwilio();
+  anteprimaDesign();
 }
 function raccogli() {
   const o = {};
@@ -379,6 +383,32 @@ async function posti() {
   const righe = Object.entries(g).slice(0, 7).map(([d, o]) => '<div><strong>' + new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }) + '</strong>: ' + o.join(', ') + '</div>');
   $('#posti').innerHTML = righe.join('') || '<div class="vuoto">Nessun posto libero.</div>';
 }
+
+function anteprimaDesign() {
+  const logo = ($('[data-k="design.logo"]').value || '').trim();
+  const colore = ($('[data-k="design.colore"]').value || '').trim();
+  const tema = $('[data-k="design.tema"]').value;
+  if (!logo && !colore) { $('#designAnteprima').innerHTML = '<p class="aiuto">Vuoto: resta l&#39;aspetto di partenza.</p>'; return; }
+  const scuro = tema === 'scuro';
+  const sfondo = scuro ? '#141413' : '#f6f5f2', carta = scuro ? '#1e1e1c' : '#fff', testo = scuro ? '#f1efe9' : '#1d1d1b';
+  $('#designAnteprima').innerHTML = '<div style="border:1px solid var(--bordo);border-radius:12px;padding:14px;display:flex;gap:14px;align-items:center;background:' + carta + ';color:' + testo + '">'
+    + (logo ? '<img src="' + esc(logo) + '" alt="" style="height:46px;max-width:170px;object-fit:contain" onerror="this.remove()">' : '')
+    + '<strong style="margin:0">' + esc(dati.attivita?.nome || "l'attività") + '</strong>'
+    + (colore ? '<span title="' + esc(colore) + '" style="width:24px;height:24px;border-radius:7px;display:inline-block;background:' + esc(colore) + '' + (scuro ? '' : '') + '"></span>' : '')
+    + '<span class="esito" style="margin-left:auto">tema: ' + (tema || 'automatico') + '</span></div>';
+}
+$('#designSito').onclick = async () => {
+  $('#designEsito').textContent = 'leggo la home del sito…';
+  try {
+    const r = await chiedi('/design/dal-sito', { method: 'POST', body: { url: $('#designUrl').value.trim() } });
+    if (!r.design) { $('#designEsito').textContent = '⚠️ ' + (r.nota || 'niente'); return; }
+    if (r.design.logo) $('[data-k="design.logo"]').value = r.design.logo;
+    if (r.design.colore) $('[data-k="design.colore"]').value = r.design.colore;
+    anteprimaDesign();
+    $('#designEsito').textContent = '✅ ' + (r.nota || 'trovato');
+  } catch (e) { $('#designEsito').textContent = '⚠️ ' + e.message; }
+};
+for (const k of ['design.logo', 'design.colore', 'design.tema']) $('[data-k="' + k + '"]').addEventListener('input', anteprimaDesign);
 
 $('#elenco').onclick = async (e) => {
   if (e.target.dataset.sposta) {

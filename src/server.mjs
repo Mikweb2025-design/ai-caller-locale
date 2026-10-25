@@ -14,7 +14,8 @@ import { salutoSegmenti } from './persona.mjs';
 import { frasePronta } from './voce.mjs';
 import { paginaAdmin } from './admin.mjs';
 import { cercaCalendari, SERVIZI } from './caldav.mjs';
-import { avviaImportazione, statoImportazione } from './sito.mjs';
+import { avviaImportazione, statoImportazione, datiDesign } from './sito.mjs';
+import { recupera, controllaUrl } from './rete.mjs';
 import { SERVIZI_CERVELLO, elencaModelli, provaConversazione } from './cervello.mjs';
 import { istruzioni } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
@@ -138,6 +139,21 @@ const server = http.createServer(async (req, res) => {
       }
       const imp = percorso.match(/^\/sito\/importa\/(\w+)$/);
       if (imp) { const l = statoImportazione(imp[1]); return l ? json(200, l) : json(404, { errore: 'importazione non trovata' }); }
+      // Design: dalla home del sito solo logo e colore (nessuna estrazione, nessun salvataggio)
+      if (percorso === '/design/dal-sito' && req.method === 'POST') {
+        try {
+          let u = String(corpo.url || '').trim() || impostazioni().attivita?.sito || '';
+          if (!u) return json(400, { errore: "scrivi l'indirizzo del sito" });
+          if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+          const controlli = { privati: false };
+          await controllaUrl(u, controlli);
+          const r = await recupera(u, { headers: { 'User-Agent': 'Mozilla/5.0 (receptionist AI; lettura informazioni pubbliche)', 'Accept-Language': 'it' }, signal: AbortSignal.timeout(12000) }, controlli);
+          if (!r.ok) throw new Error(`il sito risponde con errore ${r.status}`);
+          const design = await datiDesign(await r.text(), r.urlFinale || u, controlli);
+          if (!design.logo && !design.colore) return json(200, { design: null, nota: 'in quella home non ho trovato né logo né colore' });
+          return json(200, { design, nota: 'logo e colore tolti dalla home: premi Salva per applicarli' });
+        } catch (e) { return json(400, { errore: e.message }); }
+      }
       // Twilio: stato, verifica delle credenziali, collegamento del webhook, chiamata di prova
       if (percorso === '/twilio/stato') return json(200, { webhook: indirizzoWebhook(), segretoLocale: segreto === 'locale', configurato: twilioConfigurato(), numero: twilio().numero, firma: firmaAttiva() });
       if (percorso.startsWith('/twilio/') && req.method === 'POST') {

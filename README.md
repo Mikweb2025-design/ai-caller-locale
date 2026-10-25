@@ -157,7 +157,7 @@ Everything is edited at `/admin` (or `/admin/<SEGRETO>`), and changes apply from
 |---|---|
 | **Appuntamenti** (Appointments) | Appointments taken by the receptionist, with **Move** and **Cancel** (also in linked calendars). "Da verificare" (to check) means the caller got a time that was already taken or outside opening hours: look at it yourself. At the top there are also the **promised callbacks** ("a colleague will call you back"): name, phone number and reason; once called back, press **Fatto**. |
 | **Attività** (Business) | Name, address, phone, email, services, what to ask a booking caller, the "phone sheet" (everything the receptionist should know). The **Import from website** box is here. |
-| **Design** | Logo, accent colour and theme of the browser call page and of the "Chiamami ora" panel. Empty = the default look. It fills itself in with **Importa dal sito** (the logo and main colour of the home page). |
+| **Design** | Logo, accent colour and theme of the browser call page and of the "Chiamami ora" panel, with a **live preview** as you change them. Empty = the default look. It fills itself in with **Importa dal sito** or with the **Prendi logo e colore dal sito** button (reads just the home page). |
 | **Receptionist** | Name, gender (for Italian "pronto/pronta"), greeting, extra instructions, German on/off. |
 | **Orari** (Hours) | Opening hours per day, one-off closures, appointment length, how many in parallel, minimum notice, how far ahead, how many slots to propose, and the list of upcoming free slots. |
 | **Calendari** (Calendars) | CalDAV accounts, the subscription feed, private iCal addresses that block hours. |
