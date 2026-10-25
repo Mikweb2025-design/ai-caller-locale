@@ -73,7 +73,7 @@ Tutto si cambia da `/admin` (con `SEGRETO`: `/admin/<SEGRETO>`) e vale dalla chi
 
 ## La voce
 
-- La voce predefinita è `voci/receptionist.wav`: un uomo milanese sui 35 anni, professionale e pacato. È stata creata con Qwen3-TTS VoiceDesign e il motore la clona a ogni frase con il modello Base 0.6B.
+- La voce predefinita è `voci/receptionist.wav`: un uomo milanese sui 35 anni, naturale e professionale, con l'accento di Milano. Il campione non contiene intercalari ("allora", "ehm"), che il clone tenderebbe a ripetere. È stata creata con Qwen3-TTS VoiceDesign e il motore la clona a ogni frase con il modello Base 0.6B.
 - Per crearne un'altra: cambia la descrizione in `motore/disegna-voce.py` e lancia `python3 motore/disegna-voce.py 4`. Ascolta le proposte in `voci/`, poi copia la migliore (5–10 secondi) in `voci/receptionist.wav` e il suo testo in `voci/testo.txt`. Si può usare anche una registrazione vera, con il consenso di chi parla.
 - `TTS_TEMPERATURA` (0.3) tiene la voce calma e regolare: più alta = più espressiva e meno prevedibile.
 - Senza campione si usano gli speaker di Qwen3-TTS CustomVoice (`TTS_VOCE`), che però hanno un filo di accento straniero.
@@ -87,6 +87,7 @@ Quasi tutto si fa dal pannello admin. Il modo di parlare (tono, regole, flusso d
 | Comando | Cosa fa |
 |---|---|
 | `npm run genera-cliente` | crea la voce del cliente di prova (speaker `aiden`) per i copioni `base`, `scorbutico`, `disordine`, `improvvisato` |
+| `OUT=chiamata.ulaw node prove/chat-prova.mjs "frase 1" "frase 2"…` | chiamata in chat al server acceso, come dalla pagina web: stampa il dialogo e salva l'audio del receptionist |
 | `prove/esegui.sh <nome> [copione]` | telefonata simulata con lo stesso percorso di Twilio: ritardo di ogni risposta e registrazione in `prove/out/<nome>.mp3` |
 
 ## Cosa abbiamo misurato (MacBook Apple Silicon, 16 GB)

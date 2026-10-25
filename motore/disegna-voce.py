@@ -8,13 +8,14 @@ from mlx_audio.tts.utils import load_model
 
 RADICE = Path(__file__).resolve().parent.parent
 DESCRIZIONE = (
-    "A 35-year-old Italian man from Milan, working as a professional receptionist. "
-    "Native Italian speaker with a light, natural Milanese (northern Italian) accent. "
-    "Warm, clear mid-low voice, calm and composed, neutral and matter-of-fact tone, "
-    "no emotional emphasis, no excitement, steady even pace, like a polite office receptionist on the phone."
+    "A 35-year-old man born and raised in Milan, Italy, answering the phone at work. "
+    "Native Italian with a clear, natural Milanese accent: northern Italian vowels, typical Milan intonation and rhythm. "
+    "Relaxed, friendly and professional, conversational like a real person on a normal call, not a voice-over and not reading. "
+    "Medium-low warm voice, calm even pace, natural small pauses, no excitement, no theatrical emphasis."
 )
-TESTO = ("Buongiorno, sono Luca dell'officina. Allora, guardi, il primo posto libero è martedì mattina "
-         "alle nove, oppure alle undici e mezza. Mi dice il nome e il modello della macchina, così la segno.")
+# Testo del campione: frasi normali, senza intercalari ("allora", "ehm"), che il clone tende poi a ripetere.
+TESTO = ("Buongiorno, la sento bene. Per il tagliando ho posto giovedì mattina alle nove, oppure venerdì alle due "
+         "del pomeriggio. Mi lascia il suo nome e il modello della macchina, così la segno subito.")
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
 m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit")

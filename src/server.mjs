@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { CONFIG, twilioConfigurato } from './config.mjs';
 import { ChiamataTwilio } from './twilio-stream.mjs';
-import { gestisciChiamata, preriscalda } from './chiamata.mjs';
+import { gestisciChiamata, preriscalda, RIEMPITIVO } from './chiamata.mjs';
 import { chiamaNumero } from './strumenti.mjs';
 import { paginaPannello } from './pannello.mjs';
 import { paginaWeb } from './web.mjs';
@@ -155,7 +155,7 @@ server.on('upgrade', (req, socket, head) => {
 setInterval(() => { for (const [g, scade] of gettoni) if (scade < Date.now()) gettoni.delete(g); }, 60000).unref();
 
 // il saluto e il riempitivo si preparano subito, così la chiamata parte senza attese
-const prepara = () => Promise.all([frasePronta(saluto()), frasePronta('Mmh, allora...')])
+const prepara = () => Promise.all([frasePronta(saluto()), ...(CONFIG.riempitivoSecondi >= 0 ? [frasePronta(RIEMPITIVO)] : [])])
   .then(() => console.log('🔊 saluto pronto'))
   .catch(() => { console.log('⏳ motore vocale non ancora acceso (npm run motore), riprovo...'); setTimeout(prepara, 5000).unref(); });
 prepara();

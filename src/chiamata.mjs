@@ -9,12 +9,12 @@ import { Cervello } from './cervello.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta } from './voce.mjs';
 
 const FRAME_MS = 20;
-const RIEMPITIVO = 'Mmh, allora...';
+export const RIEMPITIVO = 'Sì, un attimo.';
 
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
 function separa(testo) {
   const azioni = [...testo.matchAll(/<<\s*(CONFERMA|FINE)\s*(?:\|([^>]*))?>>/g)].map(([, tipo, a]) => ({ tipo, argomenti: (a || '').split('|').map((x) => x.trim()) }));
-  const parlato = testo.replace(/<<[^>]*>>?/g, '').replace(/\[[^\]]*\]/g, '').replace(/[*_#`]/g, '');
+  const parlato = testo.replace(/<<[^>]*(?:>>|$)/g, '').replace(/\[[^\]]*\]/g, '').replace(/[*_#`]/g, '');
   return { azioni, parlato };
 }
 
@@ -22,7 +22,9 @@ function separa(testo) {
 // Pezzi troppo corti no: Qwen3-TTS sui frammenti di poche parole ogni tanto sbaglia.
 // Il primo pezzo di una risposta può partire già a una virgola: si comincia a parlare prima.
 function taglio(s, primo = false) {
-  if (s.lastIndexOf('<<') > s.lastIndexOf('>>')) return -1; // marcatore a metà
+  // I marcatori stanno in fondo alla risposta: da "<<" in poi non si legge niente, si aspetta la fine.
+  const marcatore = s.search(/<<|<$/);
+  if (marcatore >= 0) return s.slice(0, marcatore).trim() ? marcatore : -1;
   const m = [...s.matchAll(/[.!?…:;](?=\s)|\.\.\.(?=\s)/g)].pop();
   if (m && m.index >= 20) return m.index + m[0].length;
   if (s.length > (primo ? 40 : 90)) { const v = s.lastIndexOf(', '); if (v > 30) return v + 1; }

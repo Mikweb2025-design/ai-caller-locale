@@ -28,3 +28,5 @@ voci/proposta-*.wav
 
 # Impostazioni e appuntamenti (dati personali)
 dati/
+voci/*-precedente.*
+voci/prova-*.mp3

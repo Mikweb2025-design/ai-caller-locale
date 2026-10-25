@@ -30,8 +30,9 @@ export const CONFIG = {
     minimoMs: numero(process.env.VAD_MINIMO_MS, 250), // frasi più corte = rumore
     interruzioneMs: numero(process.env.VAD_INTERRUZIONE_MS, 500), // voce continua per interrompere il receptionist
   },
-  // se Claude tarda, dopo questi secondi dice "Mmh, allora..." (-1 = mai)
-  riempitivoSecondi: numero(process.env.RIEMPITIVO_S, 2.2),
+  // se Claude tarda, dopo questi secondi dice "Sì, un attimo." (-1 = mai, il predefinito:
+  // detto spesso suona da centralino)
+  riempitivoSecondi: numero(process.env.RIEMPITIVO_S, -1),
 
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID,
