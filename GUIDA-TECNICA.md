@@ -17,7 +17,8 @@ browser (web.mjs)  ─┘   Media Streams   │     └─  /tts  Qwen3-TTS, in 
 - **Azioni.** Claude non ha strumenti: per registrare l'appuntamento e riagganciare scrive i marcatori `<<CONFERMA|nome|AAAA-MM-GG|HH:MM|dettagli>>` e `<<FINE>>`, che il server esegue e non fa sentire. I posti liberi gli arrivano nelle istruzioni a ogni chiamata.
 - **Voce.** Il testo di Claude arriva token per token; appena c'è una frase intera (almeno 20 caratteri) va a Qwen3-TTS, che restituisce l'audio a pezzi mentre lo genera. Saluto e riempitivo ("Mmh, allora...") sono pronti in memoria dall'avvio.
 - **Interruzioni.** Se il cliente parla sopra al receptionist, il server svuota l'audio (`clear`), interrompe la sintesi e ignora il resto della risposta.
-- **Motore.** La trascrizione gira in un processo separato, così non aspetta mai che la voce finisca di generare.
+- **Motore.** La trascrizione gira in un processo separato, così non aspetta mai che la voce finisca di generare. Si chiude sempre insieme al motore, anche con kill.
+- **Memoria.** Appena parte, il motore spegne i servizi launchd elencati in `SPEGNI_SERVIZI` (altri server di modelli che occuperebbero RAM) e li riaccende quando lo chiudi. Lascialo vuoto per non toccare niente.
 
 ```
 src/

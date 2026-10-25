@@ -51,6 +51,27 @@ if __name__ == '__main__':
             sys.exit(f'La porta {PORTA} è già occupata: probabilmente il motore vocale è già acceso '
                      f'(curl http://127.0.0.1:{PORTA}/salute). Spegnilo o cambia MOTORE_PORTA nel .env.')
 
+    # Altri servizi pesanti (launchd) da spegnere mentre il receptionist è acceso, per non finire
+    # la memoria: si fermano adesso e si riaccendono quando il motore si chiude.
+    import atexit, re, subprocess
+    DOMINIO = f'gui/{os.getuid()}'
+    spenti = []
+    for etichetta in filter(None, (x.strip() for x in os.environ.get('SPEGNI_SERVIZI', 'com.qwen3tts.8091,com.qwen3tts.8092').split(','))):
+        info = subprocess.run(['launchctl', 'print', f'{DOMINIO}/{etichetta}'], capture_output=True, text=True)
+        percorso = re.search(r'^\s*path = (.+)$', info.stdout, re.M)
+        if info.returncode != 0 or not percorso:
+            continue  # non caricato
+        if subprocess.run(['launchctl', 'bootout', f'{DOMINIO}/{etichetta}'], capture_output=True).returncode == 0:
+            spenti.append(percorso.group(1).strip())
+            print(f'spento {etichetta} (si riaccende quando chiudi il motore)', flush=True)
+
+    def riaccendi():
+        for plist in spenti:
+            subprocess.run(['launchctl', 'bootstrap', DOMINIO, plist], capture_output=True)
+        if spenti:
+            print(f'riacceso: {", ".join(os.path.basename(p) for p in spenti)}', flush=True)
+    atexit.register(riaccendi)
+
 
 def lavoratore_stt(richieste, risposte, genitore):
     # Processo a parte: così l'ascolto non aspetta mai che la voce finisca di generare.
@@ -208,7 +229,8 @@ if __name__ == '__main__':
     figlio.start()
     import signal, atexit
     atexit.register(figlio.terminate)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # kill → uscita pulita, che chiude anche il figlio
+    for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # kill, Ctrl-C, terminale chiuso → uscita pulita
+        signal.signal(s, lambda *_: sys.exit(0))
     risposte.get()
     # un giro a vuoto: il primo uso di MLX è lento, meglio farlo adesso
     for _ in parla('Pronto.'):
