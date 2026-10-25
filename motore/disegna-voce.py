@@ -30,18 +30,28 @@ DESCRIZIONI = {
         "Calm, trustworthy and professional voice, warm and reassuring, natural conversational rhythm, "
         "varied pitch, never monotone, never robotic, not reading a script."
     ),
+    'femminile-v2': [
+        "A 28-year-old Italian woman from Milan, born and raised in Italy, talking on the phone with a customer she knows well. Completely native Italian, light Milanese accent, lively melodic intonation typical of real Italian speakers. Warm and quick, you can hear her smile, natural rhythm changes, expressive but never theatrical. Not robotic, not flat, not reading a script, no English-sounding pronunciation.",
+        "A 35-year-old Italian woman from northern Italy who has answered the phone for years in a small family business. Fully native Italian, natural northern accent, clear and friendly. She speaks exactly like a real Italian business owner on the phone: relaxed, brisk enough to sound human, warm emphasis on the important words, melodic Italian prosody with natural ups and downs. Not robotic, not flat, not a newsreader, no English pronunciation.",
+        "A 45-year-old Italian woman, experienced and serene, from Milan, talking politely on the phone with a loyal customer. Fully native Italian, natural and calm, medium-low warm female voice, measured but alive, with the melodic cadence of spoken Italian. Kind and reassuring, like a trusted person of the family business. Natural rhythm with slight tempo changes, never robotic, never flat, never like an advert, no English pronunciation.",
+        "A 24-year-old Italian woman from Milan, young and energetic, warmly joking on the phone with a friendly customer. Completely native Italian with authentic young Milanese intonation. Lively and bright but polite, expressive Italian melody with natural ups and downs. Sounds like a real young Italian talking to someone she likes, not a synthesizer: no monotone, no robotic pauses, no English accent.",
+        "A 32-year-old Italian woman, warm and a little playful, from northern Italy, chatting amiably with a customer she likes on the phone. Fully native Italian, natural accent, soft warm voice with a fine smile in the tone. Italian conversational melody, expressive emphasis, human rhythm with natural breathing. Professional but with charm, never cold, never robotic, never flat, never reading, no English pronunciation.",
+    ],
 }
-DESCRIZIONE = DESCRIZIONI.get(TIPO, DESCRIZIONI['maschile'])
-PREFISSO = 'proposta' if TIPO == 'maschile' else f'proposta-{TIPO}'
+des = DESCRIZIONI.get(TIPO)
+DESCRIZIONE = des[0] if isinstance(des, list) else des
+PREFISSO = 'proposta' if TIPO == 'maschile' else ('voce-f' if isinstance(des, list) else f'proposta-{TIPO}')
 # Testo del campione: frasi normali, senza intercalari ("allora", "ehm"), che il clone tende poi a ripetere.
-TESTO = ("Buongiorno, la sento bene. Per il tagliando ho posto giovedì mattina alle nove, oppure venerdì alle due "
-         "del pomeriggio. Mi lascia il suo nome e il modello della macchina, così la segno subito.")
+TESTO = ("Buongiorno, la sento benissimo. Per il tagliando posso proporle giovedì mattina alle nove, oppure venerdì "
+         "pomeriggio verso le due. Come la va? Bene. Mi lasci il suo nome e il modello della macchina: se lo segno "
+         "subito, e poi le mando la conferma. La saluto e a presto.")
 
 m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit")
 (RADICE / 'voci').mkdir(exist_ok=True)
 for i in range(1, n + 1):
     t = time.time()
-    a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=DESCRIZIONE, lang_code='italian', temperature=0.8)])
+    d = des[(i - 1) % len(des)] if isinstance(des, list) else DESCRIZIONE
+    a = np.concatenate([np.array(r.audio) for r in m.generate(text=TESTO, instruct=d, lang_code='italian', temperature=0.9)])
     f = RADICE / 'voci' / f'{PREFISSO}-{i}.wav'
     sf.write(f, a, m.sample_rate)
     print(f'{f.name}: {len(a) / m.sample_rate:.1f} s di audio in {time.time() - t:.1f} s', flush=True)
