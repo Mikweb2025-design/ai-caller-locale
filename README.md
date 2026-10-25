@@ -244,10 +244,11 @@ Free slots are computed from opening hours, appointments already taken, and your
 
 ## Confirmation emails and SMS
 
-- **Email (SMTP).** Set the server, port, user and password in the **Email e SMS** tab (Gmail: `smtp.gmail.com`, port 465 with "secure" on, an app password). In the same tab you will find two options:
-  - **Manda la conferma al cliente**: for every booking an email goes to the owner and, if the caller gave an email address, a confirmation goes to them (both with an `.ics` attachment).
-  - **Chiedi al cliente di confermare l'appuntamento**: the client receives an email with two buttons (*Sì, confermo* / *Non posso venire*); the result shows in the panel. If you disable this option, bookings remain normal (no automatic email), but you can always ask for confirmation later from the **Appuntamenti** tab.
-  The receptionist never asks for the email; it only uses it if the caller offers it.
+- **Email (SMTP).** Set the server, port, user and password in the **Email e SMS** tab (Gmail: `smtp.gmail.com`, port 465 with "secure" on, an app password). In the same tab you will find three options:
+  - **Manda la conferma al cliente**: for every booking an email goes to the owner (always, if the address is set) and, if the caller gave an email address, a confirmation goes to them (both with an `.ics` attachment).
+  - **Chiedi l'email al cliente alla fine della prenotazione**: before saying goodbye, the receptionist asks "Le mando la conferma per email, quale indirizzo?" and records it on the appointment. Disabled (default): the call stays normal and the email is only used if the caller offers it.
+  - **Manda l'email di conferma a ogni prenotazione (link Sì/No)**: the client immediately receives an email with the buttons *Sì, confermo* / *Non posso venire*; the result shows in the panel. Disabled: no automatic emails, but you can always ask later from the **Appuntamenti** tab.
+  The receptionist never asks for the email unless the option above is on.
 - **SMS.** With Twilio configured and "SMS attivi" ticked (or `CON_SMS=1`), the caller's number gets a text with day and time.
 - **Asking the client to confirm.** In the **Appuntamenti** tab, **✉️ Chiedi conferma** (on one row, or on all upcoming ones) sends the client an email with two buttons: *Sì, confermo* and *Non posso venire*. The client answers with one click and the result shows next to the appointment ("confermato dal cliente", "non può venire: richiamalo"). The links use the server's public address (Telefono tab): without it, the email asks the client to reply instead.
 

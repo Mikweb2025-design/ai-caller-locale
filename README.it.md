@@ -244,10 +244,11 @@ I posti liberi si calcolano da orari di apertura, appuntamenti già presi e dai 
 
 ## Email e SMS di conferma
 
-- **Email (SMTP).** Imposta server, porta, utente e password nella scheda **Email e SMS** (Gmail: `smtp.gmail.com`, porta 465 con "sicura" attiva, una password per le app). Nella stessa scheda trovi due opzioni:
-  - **Manda la conferma al cliente**: a ogni prenotazione parte un'email al titolare e, se il cliente ha lasciato l'email, una conferma anche a lui (entrambe con allegato `.ics`).
-  - **Chiedi al cliente di confermare l'appuntamento**: il cliente riceve un'email con due pulsanti (*Sì, confermo* / *Non posso venire*); l'esito compare nel pannello. Se disattivi questa opzione, le prenotazioni restano normali (nessuna email automatica), ma puoi sempre chiedere la conferma dopo dalla scheda **Appuntamenti**.
-  Il receptionist non chiede mai l'email: la usa solo se chi chiama la offre.
+- **Email (SMTP).** Imposta server, porta, utente e password nella scheda **Email e SMS** (Gmail: `smtp.gmail.com`, porta 465 con "sicura" attiva, una password per le app). Nella stessa scheda trovi tre opzioni:
+  - **Manda la conferma al cliente**: a ogni prenotazione parte un'email al titolare (sempre, se l'indirizzo è impostato) e, se il cliente ha lasciato l'email, una conferma anche a lui (entrambe con allegato `.ics`).
+  - **Chiedi l'email al cliente alla fine della prenotazione**: il receptionist, prima di salutare, chiede "Le mando la conferma per email, quale indirizzo?" e lo segna nell'appuntamento. Disattivo (predefinito): la chiamata resta normale e l'email viene usata solo se il cliente la dice da solo.
+  - **Manda l'email di conferma a ogni prenotazione (link Sì/No)**: il cliente riceve subito un'email con i pulsanti *Sì, confermo* / *Non posso venire*; l'esito compare nel pannello. Disattivo: niente email automatiche, ma puoi sempre chiederla dopo dalla scheda **Appuntamenti**.
+  Il receptionist non chiede l'email se non con l'opzione qui sopra.
 - **SMS.** Con Twilio configurato e "SMS attivi" spuntato (oppure `CON_SMS=1`), al numero di chi ha chiamato arriva un SMS con giorno e ora.
 - **Chiedere al cliente di confermare.** Nella scheda **Appuntamenti** il pulsante **✉️ Chiedi conferma** (su una riga, o su tutti i prossimi) manda al cliente un'email con due pulsanti: *Sì, confermo* e *Non posso venire*. Il cliente risponde con un clic e l'esito compare accanto all'appuntamento ("confermato dal cliente", "non può venire: richiamalo"). I link usano l'indirizzo pubblico del server (scheda Telefono): senza, l'email chiede di rispondere per confermare.
 

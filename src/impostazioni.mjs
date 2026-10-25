@@ -88,6 +88,7 @@ export const PREDEFINITE = {
     mittente: '', // es. "Officina Marchetti <prenotazioni@officina.it>"
     avvisaA: '', // chi riceve un'email a ogni nuova prenotazione (separati da virgola)
     confermaAlCliente: true, // se il cliente ha lasciato l'email
+    chiediEmail: false, // se attivo: alla fine della prenotazione il receptionist chiede all'ora l'indirizzo email ("le mando la conferma")
     chiediConferma: false, // se true, il titolare deve chiedere la conferma; se false, la conferma è automatica a ogni prenotazione
   },
   // il numero di telefono: vuoto = valori del .env

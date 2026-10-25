@@ -228,8 +228,10 @@ export function paginaAdmin({ api, web, feed }) {
       <div><label>Avvisa a ogni prenotazione <small>(email, separate da virgola)</small></label><input data-k="email.avvisaA"></div>
     </div>
     <label class="check" style="margin-top:12px"><input type="checkbox" data-k="email.confermaAlCliente"> Manda la conferma al cliente se ha lasciato l'email</label>
-    <label class="check" style="margin-top:12px"><input type="checkbox" data-k="email.chiediConferma"> Chiedi al cliente di confermare l'appuntamento (email con pulsanti Sì/No)</label>
-    <p class="aiuto" style="margin-top:6px">Se attivo: a ogni prenotazione il cliente riceve un'email con due pulsanti (<strong>Sì, confermo</strong> / <strong>Non posso venire</strong>). Se disattivo: la prenotazione è normale, senza email di conferma automatica (puoi sempre chiederla dopo dalla scheda Appuntamenti).</p>
+    <label class="check" style="margin-top:12px"><input type="checkbox" data-k="email.chiediEmail"> Chiedi l'email al cliente alla fine della prenotazione</label>
+    <p class="aiuto" style="margin-top:6px">Se attivo, prima di salutare il receptionist chiede: "Le mando la conferma per email, quale indirizzo?" e lo segna nell'appuntamento. Se disattivo (predefinito), la chiamata resta normale e l'email viene usata solo se il cliente la dice da solo.</p>
+    <label class="check" style="margin-top:12px"><input type="checkbox" data-k="email.chiediConferma"> Manda l'email di conferma a ogni prenotazione <small>(con i link Sì/No)</small></label>
+    <p class="aiuto" style="margin-top:6px">Se attivo: a ogni prenotazione il cliente riceve subito un'email con due pulsanti (<strong>Sì, confermo</strong> / <strong>Non posso venire</strong>), l'esito compare nel pannello. Se disattivo: niente email automatiche, ma puoi sempre chiederla dopo con <strong>✉️ Chiedi conferma</strong> nella scheda Appuntamenti.</p>
     <div class="riga" style="margin-top:12px"><input id="emailProva" placeholder="la tua email" style="max-width:280px"><button class="secondario" type="button" id="provaEmail">Manda email di prova</button></div>
     <h2 style="margin-top:22px">SMS di conferma</h2>
     <p class="aiuto">Con Twilio configurato (scheda Telefono, oppure nel file .env), al cliente che chiama arriva un SMS con giorno e ora.</p>

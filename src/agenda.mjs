@@ -280,10 +280,10 @@ export async function prenota({ nome, giorno, ora, dettagli = '', email = '', te
   const lista = appuntamenti();
   lista.push(a);
   salva(lista);
-  // email di conferma: parte solo se l'admin ha attivato "chiedi conferma" nelle impostazioni
-  const inviaEmail = cfgEmail.attiva && cfgEmail.chiediConferma;
+  // email di conferma al cliente: solo se l'admin ha attivato l'opzione; l'avviso al titolare (avvisaA) parte sempre
+  const libretto = cfgEmail.attiva && cfgEmail.chiediConferma;
   const [esiti, erroriCalendario] = await Promise.all([
-    inviaEmail ? avvisa(a).catch((e) => ({ errore: e.message })) : { emailTitolare: 'disattivata', emailCliente: 'disattivata' },
+    avvisa(a, { cliente: libretto }).catch((e) => ({ errore: e.message })),
     sincronizza(a),
   ]);
   return { appuntamento: a, ...esiti, calendari: erroriCalendario.length ? erroriCalendario : 'ok' };
@@ -301,7 +301,7 @@ export function testoConferma(a) {
   return `${attivita.nome}: ciao ${a.nome.split(' ')[0] || ''}, appuntamento confermato per ${giornoParlato(a.giorno)} alle ${a.ora}${a.dettagli ? ` (${a.dettagli})` : ''}.${attivita.indirizzo ? ` Ci trovi in ${attivita.indirizzo}.` : ''} A presto!`;
 }
 
-export async function avvisa(a) {
+export async function avvisa(a, { cliente = true } = {}) {
   const e = impostazioni().email;
   const t = postino();
   const esiti = { emailTitolare: 'no', emailCliente: 'no' };
@@ -317,7 +317,7 @@ export async function avvisa(a) {
     });
     esiti.emailTitolare = 'inviata';
   }
-  if (e.confermaAlCliente && a.email) {
+  if (cliente && e.confermaAlCliente && a.email) {
     await t.sendMail({ from: da, to: a.email, subject: `Appuntamento confermato – ${attivita.nome}`, text: testoConferma(a), icalEvent: { method: 'PUBLISH', content: ics([a]) } });
     esiti.emailCliente = 'inviata';
   }
