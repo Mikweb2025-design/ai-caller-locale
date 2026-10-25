@@ -4,10 +4,10 @@
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { CONFIG, twilioConfigurato } from './config.mjs';
+import { CONFIG } from './config.mjs';
+import { twilio, twilioConfigurato, urlPubblico, indirizzoWebhook, verifica, collegaNumero, chiamaNumero, SEGRETO } from './twilio.mjs';
 import { ChiamataTwilio } from './twilio-stream.mjs';
 import { gestisciChiamata, preriscalda, RIEMPITIVO } from './chiamata.mjs';
-import { chiamaNumero } from './strumenti.mjs';
 import { paginaPannello } from './pannello.mjs';
 import { paginaWeb } from './web.mjs';
 import { saluto } from './persona.mjs';
@@ -17,8 +17,8 @@ import { cercaCalendari, SERVIZI } from './caldav.mjs';
 import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
 import { appuntamenti, annulla, sposta, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
 
-const segreto = process.env.SEGRETO || 'locale';
-if (CONFIG.urlPubblico && !process.env.SEGRETO) console.warn('⚠️ Manca SEGRETO nel .env: il webhook e il pannello hanno un indirizzo facile da indovinare.');
+const segreto = SEGRETO;
+if (urlPubblico() && !process.env.SEGRETO) console.warn('⚠️ Manca SEGRETO nel .env: il webhook e il pannello hanno un indirizzo facile da indovinare.');
 const gettoni = new Map(); // gettone monouso → scadenza
 
 function nuovoGettone() {
@@ -48,7 +48,7 @@ const server = http.createServer(async (req, res) => {
       const numeroTwilio = inUscita ? p.From : p.To;
       console.log(`📞 ${p.CallSid} ${inUscita ? 'in uscita verso' : 'da'} ${cliente}`);
       preriscalda(p.CallSid, cliente); // Claude Code si avvia mentre squilla
-      const host = CONFIG.urlPubblico ? new URL(CONFIG.urlPubblico).host : req.headers.host;
+      const host = urlPubblico() ? new URL(urlPubblico()).host : req.headers.host;
       res.writeHead(200, { 'Content-Type': 'text/xml' });
       return res.end(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -68,7 +68,7 @@ const server = http.createServer(async (req, res) => {
 
     // Pannello admin: impostazioni, calendari, email, appuntamenti
     if (req.method === 'GET' && (url.pathname === `/admin/${segreto}` || (url.pathname === '/admin' && segreto === 'locale'))) {
-      const base = CONFIG.urlPubblico || `http://${req.headers.host}`;
+      const base = urlPubblico() || `http://${req.headers.host}`;
       return html(paginaAdmin({ api: `/api/${segreto}`, web: segreto === 'locale' ? '/' : `/web/${segreto}`, feed: `${base}/calendario/${segreto}.ics` }));
     }
     if (url.pathname.startsWith(`/api/${segreto}/`)) {
@@ -93,6 +93,15 @@ const server = http.createServer(async (req, res) => {
       }
       // CalDAV: servizi noti, ricerca dei calendari di un conto, prova di lettura
       if (percorso === '/caldav/servizi') return json(200, SERVIZI);
+      // Twilio: stato, verifica delle credenziali, collegamento del webhook, chiamata di prova
+      if (percorso === '/twilio/stato') return json(200, { webhook: indirizzoWebhook(), segretoLocale: segreto === 'locale', configurato: twilioConfigurato(), numero: twilio().numero });
+      if (percorso.startsWith('/twilio/') && req.method === 'POST') {
+        try {
+          if (percorso === '/twilio/verifica') return json(200, await verifica());
+          if (percorso === '/twilio/collega') return json(200, await collegaNumero());
+          if (percorso === '/twilio/chiamami') return json(200, { sid: await chiamaNumero(String(corpo.numero || '').replace(/\s+/g, '')) });
+        } catch (e) { return json(400, { errore: e.message }); }
+      }
       if (percorso.startsWith('/caldav/') && req.method === 'POST') {
         const conto = { ...corpo };
         if (!conto.password) conto.password = (impostazioni().calendari || []).find((c) => c.id === conto.id)?.password || '';
@@ -133,7 +142,7 @@ const server = http.createServer(async (req, res) => {
           try { messaggio = `Ti sto chiamando (${await chiamaNumero(p.chiama.replace(/\s+/g, ''))}).`; } catch (e) { messaggio = `Chiamata non partita: ${e.message}`; }
         }
       }
-      return html(paginaPannello({ messaggio, twilio: twilioConfigurato(), numero: CONFIG.twilio.numero, web: `/web/${segreto}` }));
+      return html(paginaPannello({ messaggio, twilio: twilioConfigurato(), numero: twilio().numero, web: `/web/${segreto}` }));
     }
 
     if (req.method === 'GET' && url.pathname === '/salute') {

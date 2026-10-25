@@ -61,6 +61,14 @@ export const PREDEFINITE = {
     avvisaA: '', // chi riceve un'email a ogni nuova prenotazione (separati da virgola)
     confermaAlCliente: true, // se il cliente ha lasciato l'email
   },
+  // il numero di telefono: vuoto = valori del .env
+  twilio: {
+    accountSid: '',
+    apiKey: '', // API Key SID (SK...), oppure vuoto se usi l'Auth Token
+    apiSecret: '', // API Key secret oppure Auth Token
+    numero: '',
+    urlPubblico: '', // https://... da cui Twilio raggiunge questo server
+  },
   sms: {
     attivo: process.env.CON_SMS === '1',
   },
@@ -91,6 +99,7 @@ export function salvaImpostazioni(nuove) {
   const attuali = impostazioni();
   // la password non torna mai al browser: se arriva vuota, resta quella di prima
   if (nuove?.email && !nuove.email.password) nuove.email.password = attuali.email.password;
+  if (nuove?.twilio && !nuove.twilio.apiSecret) nuove.twilio.apiSecret = nuove.twilio.accountSid === '' ? '' : attuali.twilio?.apiSecret || ''; // senza account niente token
   if (Array.isArray(nuove?.calendari)) {
     for (const c of nuove.calendari) {
       c.id ||= Math.random().toString(36).slice(2, 10);
@@ -101,6 +110,7 @@ export function salvaImpostazioni(nuove) {
   const tutte = unisci(PREDEFINITE, unisci(attuali, nuove));
   if (Array.isArray(nuove?.calendari)) tutte.calendari = nuove.calendari; // l'elenco arriva sempre intero
   for (const g of GIORNI) tutte.orari[g] = String(tutte.orari[g] || '').trim();
+  delete tutte.twilio.segretoImpostato;
   writeFileSync(FILE, JSON.stringify(tutte, null, 2));
   cache = tutte;
   for (const f of ascoltatori) try { f(tutte); } catch {}
@@ -112,6 +122,8 @@ export function impostazioniPubbliche() {
   const i = structuredClone(impostazioni());
   i.email.passwordImpostata = Boolean(i.email.password);
   i.email.password = '';
+  i.twilio.segretoImpostato = Boolean(i.twilio.apiSecret || process.env.TWILIO_API_SECRET);
+  i.twilio.apiSecret = '';
   for (const c of i.calendari || []) { c.passwordImpostata = Boolean(c.password); c.password = ''; }
   return i;
 }

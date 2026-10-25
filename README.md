@@ -53,7 +53,21 @@ Il receptionist AI risponde al primo squillo, ogni volta. Accoglie il cliente, c
 
 Su un Mac con Apple Silicon il receptionist risponde in circa 2 secondi dalla fine della frase del cliente.
 
-**Pannello admin** (`/admin`): orari di apertura e chiusure, posti liberi veri, calendari Nextcloud, iCloud e CalDAV collegati in lettura e scrittura (crea, sposta, cancella), calendario da abbonarsi in Google/Outlook, email di conferma, SMS ed elenco degli appuntamenti.
+**Pannello admin** (`/admin`): orari di apertura e chiusure, posti liberi veri, calendari Nextcloud, iCloud e CalDAV collegati in lettura e scrittura (crea, sposta, cancella), calendario da abbonarsi in Google/Outlook, numero Twilio (credenziali, webhook collegato in automatico, chiamata di prova), email di conferma, SMS ed elenco degli appuntamenti.
+
+## Come appare
+
+**Chiamata dal browser:** si parla col microfono oppure si scrive, e la conversazione resta scritta.
+
+<p align="center"><img src="docs/screenshot/chiamata-browser.png" alt="Chiamata di prova dal browser con la chat" width="420"></p>
+
+**Pannello admin** (`/admin`): appuntamenti, attività, orari, calendari, telefono, email e SMS.
+
+| Appuntamenti | Orari e posti liberi |
+|---|---|
+| ![Elenco degli appuntamenti con Sposta e Annulla](docs/screenshot/admin-appuntamenti.png) | ![Orari di apertura, agenda e prossimi posti liberi](docs/screenshot/admin-orari.png) |
+| **Calendari (Nextcloud, iCloud, CalDAV)** | **Telefono (Twilio)** |
+| ![Calendario Nextcloud collegato in lettura e scrittura](docs/screenshot/admin-calendari.png) | ![Credenziali Twilio, webhook e collegamento automatico del numero](docs/screenshot/admin-telefono.png) |
 
 ## Per chi è
 

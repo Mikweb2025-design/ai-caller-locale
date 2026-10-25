@@ -10,8 +10,6 @@ const numero = (v, d) => (v === undefined || v === '' ? d : Number(v));
 
 export const CONFIG = {
   porta: numero(process.env.PORTA, 5050),
-  // Indirizzo pubblico del server (https://...), serve a Twilio per raggiungerci.
-  urlPubblico: (process.env.URL_PUBBLICO || '').replace(/\/$/, ''),
 
   // Il motore vocale locale (motore/motore.py): faster-whisper + Qwen3-TTS
   motore: (process.env.MOTORE_URL || `http://127.0.0.1:${process.env.MOTORE_PORTA || 5051}`).replace(/\/$/, ''),
@@ -36,13 +34,5 @@ export const CONFIG = {
   // detto spesso suona da centralino)
   riempitivoSecondi: numero(process.env.RIEMPITIVO_S, -1),
 
-  twilio: {
-    accountSid: process.env.TWILIO_ACCOUNT_SID,
-    apiKey: process.env.TWILIO_API_KEY,
-    apiSecret: process.env.TWILIO_API_SECRET,
-    numero: process.env.TWILIO_NUMERO || '', // il numero Twilio che risponde, es. +15551234567
-  },
-  inviaSms: process.env.INVIA_SMS !== '0',
 };
 
-export const twilioConfigurato = () => Boolean(CONFIG.twilio.accountSid && CONFIG.twilio.apiKey && CONFIG.twilio.apiSecret);

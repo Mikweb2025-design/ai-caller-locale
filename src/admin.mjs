@@ -123,6 +123,27 @@ export function paginaAdmin({ api, web, feed }) {
     <div class="riga" style="margin-top:10px"><button class="secondario" type="button" id="verificaCal">Verifica calendari</button><span id="esitoCal" class="aiuto" style="margin:0"></span></div>
   </section>
 
+  <section data-scheda="Telefono">
+    <h2>Numero di telefono (Twilio)</h2>
+    <p class="aiuto">Per rispondere a un numero vero: un account Twilio <strong>non di prova</strong> (in prova Twilio legge un avviso a ogni chiamata), un numero, e questo server raggiungibile da internet in https (VPS, oppure <code>cloudflared tunnel --url http://localhost:5050</code>).</p>
+    <div id="avvisoSegreto" class="aiuto" style="display:none;color:var(--rosso)">⚠️ Il server è pubblico ma senza SEGRETO: chiunque conosca l'indirizzo può aprire questo pannello. Metti <code>SEGRETO=una-stringa-lunga-a-caso</code> nel file .env e riavvia: il pannello diventa /admin/&lt;segreto&gt;.</div>
+    <div class="griglia" style="margin-top:12px">
+      <div><label>Account SID <small>(AC…)</small></label><input data-k="twilio.accountSid" autocomplete="off"></div>
+      <div><label>API Key SID <small>(SK…, vuoto se usi l'Auth Token)</small></label><input data-k="twilio.apiKey" autocomplete="off"></div>
+      <div><label>API Key secret o Auth Token <small id="twInfo"></small></label><input type="password" data-k="twilio.apiSecret" autocomplete="new-password" placeholder="lascia vuoto per non cambiarlo"></div>
+      <div><label>Indirizzo pubblico del server</label><input data-k="twilio.urlPubblico" placeholder="https://receptionist.tuodominio.it"></div>
+      <div><label>Numero che risponde</label><input data-k="twilio.numero" placeholder="+39 02 1234567" list="numeriTwilio"><datalist id="numeriTwilio"></datalist></div>
+    </div>
+    <div class="riga" style="margin-top:12px"><button class="secondario" type="button" id="twVerifica">Verifica credenziali</button><span class="esito" id="twEsito"></span></div>
+    <h2 style="margin-top:22px">Collegare il numero</h2>
+    <p class="aiuto">Su Twilio: Phone Numbers → il tuo numero → Voice configuration → "A call comes in" = Webhook, <strong>HTTP POST</strong>, con questo indirizzo. Oppure lo imposto io col pulsante.</p>
+    <div class="riga"><code id="twWebhook">—</code><button class="secondario" type="button" id="twCopia">Copia</button><button type="button" id="twCollega">Collega il numero automaticamente</button></div>
+    <p class="esito" id="twCollegaEsito"></p>
+    <h2 style="margin-top:22px">Prova</h2>
+    <p class="aiuto">Il receptionist chiama il tuo cellulare e parla per primo (serve tutto quello sopra).</p>
+    <div class="riga"><input id="twChiama" placeholder="+39 3xx xxx xxxx" style="max-width:240px"><button class="secondario" type="button" id="twChiamami">Chiamami ora</button><span class="esito" id="twChiamaEsito"></span></div>
+  </section>
+
   <section data-scheda="Email e SMS">
     <h2>Email di conferma</h2>
     <p class="aiuto">A ogni prenotazione: un'email a te (con l'evento da aggiungere al calendario) e, se il cliente ha lasciato l'email, la conferma a lui. Con Gmail usa smtp.gmail.com, porta 465 sicura e una "password per le app".</p>
@@ -161,6 +182,7 @@ const scheda = (nome) => {
 };
 for (const s of sezioni) { const a = document.createElement('a'); a.href = '#'; a.textContent = s.dataset.scheda; a.onclick = (e) => { e.preventDefault(); scheda(s.dataset.scheda); }; $('#schede').append(a); }
 let iniziale = 'Appuntamenti'; try { iniziale = localStorage.getItem('scheda') || iniziale; } catch {}
+if (location.hash) iniziale = decodeURIComponent(location.hash.slice(1));
 scheda(sezioni.some((s) => s.dataset.scheda === iniziale) ? iniziale : 'Appuntamenti');
 
 const avviso = (t, ms = 3000) => { const m = $('#msg'); m.textContent = t; m.style.display = 'block'; clearTimeout(avviso.t); avviso.t = setTimeout(() => (m.style.display = 'none'), ms); };
@@ -229,6 +251,8 @@ function riempi() {
     if (el.type === 'checkbox') el.checked = Boolean(v); else el.value = v ?? '';
   }
   $('#pwInfo').textContent = dati.email.passwordImpostata ? '(impostata)' : '(non impostata)';
+  $('#twInfo').textContent = dati.twilio.segretoImpostato ? '(impostato)' : '';
+  statoTwilio();
 }
 function raccogli() {
   const o = {};
@@ -281,6 +305,38 @@ $('#verificaCal').onclick = async () => {
     const r = await chiedi('/calendari/verifica', { method: 'POST', body: { calendariOccupato: prendi(raccogli(), 'agenda.calendariOccupato') } });
     $('#esitoCal').textContent = r.errori.length ? '⚠️ ' + r.errori.join(' · ') : '✅ ' + r.eventi + ' impegni letti' + (r.prossimo ? ', il prossimo: ' + r.prossimo : '');
   } catch (e) { $('#esitoCal').textContent = '⚠️ ' + e.message; }
+};
+async function statoTwilio() {
+  try {
+    const s = await chiedi('/twilio/stato');
+    $('#twWebhook').textContent = s.webhook || 'metti prima l\u2019indirizzo pubblico e salva';
+    $('#avvisoSegreto').style.display = s.segretoLocale && s.webhook ? 'block' : 'none';
+  } catch {}
+}
+const salvaPrima = () => chiedi('/impostazioni', { method: 'POST', body: raccogli() }).then((d) => { dati = d; });
+$('#twVerifica').onclick = async () => {
+  $('#twEsito').textContent = 'controllo…';
+  try {
+    await salvaPrima();
+    const r = await chiedi('/twilio/verifica', { method: 'POST' });
+    $('#numeriTwilio').innerHTML = r.numeri.map((n) => '<option value="' + esc(n.numero) + '">' + esc(n.nome) + '</option>').join('');
+    if (!$('[data-k="twilio.numero"]').value && r.numeri[0]) $('[data-k="twilio.numero"]').value = r.numeri[0].numero;
+    $('#twEsito').textContent = '✅ ' + r.conto + (r.tipo === 'Trial' ? ' (account di PROVA: le chiamate iniziano con un avviso di Twilio)' : '') + ' · numeri: ' + (r.numeri.map((n) => n.numero).join(', ') || 'nessuno');
+    statoTwilio();
+  } catch (e) { $('#twEsito').textContent = '⚠️ ' + e.message; }
+};
+$('#twCopia').onclick = () => navigator.clipboard.writeText($('#twWebhook').textContent).then(() => avviso('Indirizzo copiato'));
+$('#twCollega').onclick = async () => {
+  $('#twCollegaEsito').textContent = 'collego…';
+  try { await salvaPrima(); const r = await chiedi('/twilio/collega', { method: 'POST' }); $('#twCollegaEsito').textContent = '✅ ' + r.numero + ' ora risponde con il receptionist'; statoTwilio(); }
+  catch (e) { $('#twCollegaEsito').textContent = '⚠️ ' + e.message; }
+};
+$('#twChiamami').onclick = async () => {
+  const n = $('#twChiama').value.trim();
+  if (!n) return avviso('Scrivi il tuo numero');
+  $('#twChiamaEsito').textContent = 'chiamo…';
+  try { await salvaPrima(); const r = await chiedi('/twilio/chiamami', { method: 'POST', body: { numero: n } }); $('#twChiamaEsito').textContent = '📞 ti sto chiamando (' + r.sid + ')'; }
+  catch (e) { $('#twChiamaEsito').textContent = '⚠️ ' + e.message; }
 };
 $('#provaEmail').onclick = async () => {
   const a = $('#emailProva').value.trim();

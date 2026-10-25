@@ -104,6 +104,7 @@ async function chiama() {
   stato('collegamento…');
   ctx = new AudioContext({ sampleRate: 8000 });
   let senzaMicrofono = false;
+  stato('consenti l\u2019uso del microfono…');
   try {
     flusso = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
   } catch (e) {
@@ -135,6 +136,7 @@ async function chiama() {
     $('chiama').textContent = 'Riaggancia'; $('chiama').className = 'chiudi'; $('chiama').disabled = false;
     $('muto').disabled = $('frase').disabled = $('invia').disabled = false;
     stato(senzaMicrofono ? 'senza microfono: scrivi in chat' : 'squilla…');
+    if (senzaMicrofono) { $('#muto').textContent = 'Senza microfono'; $('#muto').disabled = true; }
   };
   ws.onmessage = ({ data }) => {
     const m = JSON.parse(data);

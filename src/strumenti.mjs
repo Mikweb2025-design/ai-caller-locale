@@ -1,7 +1,8 @@
 // Cosa succede quando il receptionist usa uno strumento durante la chiamata.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { CONFIG, RADICE, twilioConfigurato } from './config.mjs';
+import { RADICE } from './config.mjs';
+import { twilio, twilioConfigurato, inviaSms } from './twilio.mjs';
 import { prenota, testoConferma } from './agenda.mjs';
 import { impostazioni } from './impostazioni.mjs';
 
@@ -21,7 +22,7 @@ export async function confermaAppuntamento({ nome, giorno, ora, dettagli, email 
   chiamata.log('📅 appuntamento', esito.appuntamento, esito.errore ? `⚠️ email: ${esito.errore}` : `email titolare: ${esito.emailTitolare}, cliente: ${esito.emailCliente}`);
 
   let sms = 'non inviato';
-  if (impostazioni().sms.attivo && twilioConfigurato() && telefono.startsWith('+') && telefono !== CONFIG.twilio.numero) {
+  if (impostazioni().sms.attivo && twilioConfigurato() && telefono.startsWith('+') && telefono !== twilio().numero) {
     try {
       await inviaSms(telefono, testoConferma(esito.appuntamento));
       sms = 'inviato';
@@ -32,32 +33,4 @@ export async function confermaAppuntamento({ nome, giorno, ora, dettagli, email 
   }
   chiamata.log('✉️ SMS', sms);
   return { ok: true, ...esito, sms };
-}
-
-async function inviaSms(a, testo) {
-  const { accountSid, apiKey, apiSecret, numero } = CONFIG.twilio;
-  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-    method: 'POST',
-    headers: {
-      Authorization: 'Basic ' + Buffer.from(`${apiKey}:${apiSecret}`).toString('base64'),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ From: numero, To: a, Body: testo }),
-  });
-  if (!r.ok) throw new Error(`Twilio ${r.status}: ${(await r.text()).slice(0, 300)}`);
-}
-
-export async function chiamaNumero(a) {
-  const { accountSid, apiKey, apiSecret, numero } = CONFIG.twilio;
-  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`, {
-    method: 'POST',
-    headers: {
-      Authorization: 'Basic ' + Buffer.from(`${apiKey}:${apiSecret}`).toString('base64'),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ From: numero, To: a, Url: `${CONFIG.urlPubblico}/twilio/${process.env.SEGRETO}/voce?uscita=1` }),
-  });
-  const j = await r.json();
-  if (!r.ok) throw new Error(`Twilio ${r.status}: ${j.message}`);
-  return j.sid;
 }
