@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { RADICE } from './config.mjs';
 import { twilio, twilioConfigurato, inviaSms } from './twilio.mjs';
-import { prenota, testoConferma } from './agenda.mjs';
+import { prenota, testoConferma, aggiungiRichiamo } from './agenda.mjs';
 import { impostazioni } from './impostazioni.mjs';
 
 const cartella = join(RADICE, 'registrazioni');
@@ -33,4 +33,19 @@ export async function confermaAppuntamento({ nome, giorno, ora, dettagli, email 
   }
   chiamata.log('✉️ SMS', sms);
   return { ok: true, ...esito, sms };
+}
+
+// Il cliente ha accettato di essere richiamato da un collega: lo segno, senza giorno né orario.
+export async function registraRichiamo({ nome, motivo }, chiamata) {
+  const telefono = chiamata.chiamante && chiamata.chiamante !== 'browser' ? chiamata.chiamante : '';
+  const canale = chiamata.versione === 'web' ? 'browser' : 'telefono';
+  try {
+    const r = await aggiungiRichiamo({ nome, motivo, telefono, canale });
+    appendFileSync(join(cartella, 'appuntamenti.jsonl'), JSON.stringify(r) + '\n');
+    chiamata.log('📞 richiamo promesso', r, telefono ? `Telefono: ${telefono}` : 'numero già noto? no: browser');
+    return { ok: true, richiamo: r };
+  } catch (e) {
+    chiamata.log('⚠️ richiamo non registrato:', e.message);
+    return { ok: false, errore: e.message };
+  }
 }

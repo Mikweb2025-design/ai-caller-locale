@@ -19,7 +19,7 @@ import { SERVIZI_CERVELLO, elencaModelli, provaConversazione } from './cervello.
 import { istruzioni } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
 import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
-import { appuntamenti, annulla, sposta, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
+import { appuntamenti, annulla, sposta, richiamoFatto, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma } from './agenda.mjs';
 
 const segreto = SEGRETO;
 if (urlPubblico() && !process.env.SEGRETO) console.error('⚠️ URL pubblico impostato ma manca SEGRETO nel .env: il server rifiuta le richieste da internet finché non lo metti.');
@@ -115,6 +115,8 @@ const server = http.createServer(async (req, res) => {
       if (sp && req.method === 'POST') {
         try { const a = await sposta(sp[1], corpo.giorno, corpo.ora); return a ? json(200, a) : json(404, { errore: 'appuntamento non trovato' }); } catch (e) { return json(400, { errore: e.message }); }
       }
+      const rf = percorso.match(/^\/appuntamenti\/([a-f0-9]+)\/fatto$/);
+      if (rf && req.method === 'POST') { const r = await richiamoFatto(rf[1]); return r ? json(200, r) : json(404, { errore: 'richiamo non trovato' }); }
       // CalDAV: servizi noti, ricerca dei calendari di un conto, prova di lettura
       if (percorso === '/caldav/servizi') return json(200, SERVIZI);
       // Cervello: servizi pronti, elenco modelli, prova di una conversazione (nessun appuntamento viene scritto)

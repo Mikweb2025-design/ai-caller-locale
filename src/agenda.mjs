@@ -171,7 +171,8 @@ export const erroriCalendari = () => occupatoCache.errori || [];
 export async function postiLiberi({ da = new Date(), giorni, escludi } = {}) {
   const { orari, agenda } = impostazioni();
   const durata = Number(agenda.durataMinuti) || 60;
-  const presi = appuntamenti().filter((a) => a.stato !== 'annullato' && a.id !== escludi).map((a) => {
+  // i richiami non sono appuntamenti: niente posti occupati
+  const presi = appuntamenti().filter((a) => !a.tipo && a.stato !== 'annullato' && a.id !== escludi).map((a) => {
     const inizio = daRoma(a.giorno, minutiDa(a.ora));
     return { inizio, fine: new Date(inizio.getTime() + (a.durata || durata) * 60000) };
   });
@@ -204,6 +205,47 @@ export async function postiPerIstruzioni() {
   const perGiorno = new Map();
   for (const p of liberi) (perGiorno.get(p.giorno) || perGiorno.set(p.giorno, []).get(p.giorno)).push(p);
   return [...perGiorno].map(([iso, posti]) => `- ${giornoParlato(iso)} (${iso}): ${posti.map((p) => p.ora).join(', ')}`).join('\n');
+}
+
+// --- richiami promessi ---
+// Quando il receptionist promette un richiamo da un collega (cliente in un'altra lingua,
+// arrabbiato, o cliente che preferisce parlare con una persona) si segna qui: nessun giorno
+// né orario, nessun calendario, solo il motivo. Il titolare lo trova nel pannello.
+export async function aggiungiRichiamo({ nome, motivo, telefono = '', canale = '' }) {
+  const r = {
+    id: randomBytes(6).toString('hex'),
+    tipo: 'richiamo',
+    nome: String(nome || '').trim() || 'non detto',
+    telefono: String(telefono || '').trim(),
+    motivo: String(motivo || '').trim(),
+    stato: 'da richiamare',
+    canale: String(canale || '').trim(),
+    creato: new Date().toISOString(),
+  };
+  const lista = appuntamenti();
+  lista.push(r);
+  salva(lista);
+  return r;
+}
+
+export async function aggiornaRichiamo(id, { nome = '', motivo = '' } = {}) {
+  const lista = appuntamenti();
+  const r = lista.find((x) => x.id === id);
+  if (!r || r.tipo !== 'richiamo') return null;
+  if (nome.trim() && nome.trim() !== 'non detto') r.nome = nome.trim();
+  if (motivo.trim()) r.motivo = motivo.trim();
+  salva(lista);
+  return r;
+}
+
+export async function richiamoFatto(id) {
+  const lista = appuntamenti();
+  const r = lista.find((x) => x.id === id);
+  if (!r || r.tipo !== 'richiamo') return null;
+  r.stato = 'richiamato';
+  r.fatto = new Date().toISOString();
+  salva(lista);
+  return r;
 }
 
 // --- prenotazione ---
@@ -273,7 +315,7 @@ export async function emailDiProva(a) {
 // --- calendario da abbonarsi (Google Calendar, Apple Calendario, Outlook) ---
 const dataIcs = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 const testoIcs = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, (c) => `\\${c}`);
-export function ics(lista = appuntamenti().filter((a) => a.stato !== 'annullato')) {
+export function ics(lista = appuntamenti().filter((a) => !a.tipo && a.stato !== 'annullato')) {
   const { attivita } = impostazioni();
   const righe = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ai-caller-locale//IT', 'CALSCALE:GREGORIAN', `X-WR-CALNAME:${testoIcs(`Appuntamenti ${attivita.nome}`)}`, 'X-WR-TIMEZONE:Europe/Rome'];
   for (const a of lista) {

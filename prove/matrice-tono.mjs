@@ -104,5 +104,7 @@ for (const { s, dialogo, secondi } of risultati) {
 }
 const nuovi = leggiAgenda().filter((a) => !prima.has(a.id));
 console.log(`\n===== APPUNTAMENTI CREATI DALLA PROVA (${nuovi.length}) =====`);
-for (const a of nuovi) console.log(`${a.id} | ${a.nome} | ${a.giorno} ${a.ora} | ${a.dettagli}${a.email ? ' | ' + a.email : ''}`);
+for (const a of nuovi) console.log(a.tipo === 'richiamo'
+  ? `${a.id} | RICHIAMA | ${a.nome} | ${a.motivo}`
+  : `${a.id} | ${a.nome} | ${a.giorno} ${a.ora} | ${a.dettagli}${a.email ? ' | ' + a.email : ''}`);
 process.exit(0);

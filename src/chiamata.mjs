@@ -4,7 +4,8 @@
 import { CONFIG } from './config.mjs';
 import { istruzioni, salutoSegmenti, salutoCompleto } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
-import { confermaAppuntamento } from './strumenti.mjs';
+import { confermaAppuntamento, registraRichiamo } from './strumenti.mjs';
+import { aggiornaRichiamo } from './agenda.mjs';
 import { Cervello } from './cervello.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta } from './voce.mjs';
 
@@ -13,7 +14,7 @@ export const RIEMPITIVO = 'Sì, un attimo.';
 
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
 function separa(testo) {
-  const azioni = [...testo.matchAll(/<<\s*(CONFERMA|FINE)\s*(?:\|([^>]*))?>>/g)].map(([, tipo, a]) => ({ tipo, argomenti: (a || '').split('|').map((x) => x.trim()) }));
+  const azioni = [...testo.matchAll(/<<\s*(CONFERMA|RICHIAMA|FINE)\s*(?:\|([^>]*))?>>/g)].map(([, tipo, a]) => ({ tipo, argomenti: (a || '').split('|').map((x) => x.trim()) }));
   const parlato = testo.replace(/<<[^>]*(?:>>|$)/g, '').replace(/\[[^\]]*\]/g, '').replace(/[*_#`]/g, '');
   return { azioni, parlato };
 }
@@ -83,6 +84,7 @@ export function gestisciChiamata(chiamata) {
   let primoAudio = true;
   let riempitivo = null;
   let chiudere = false;
+  let richiamoId = null; // il primo RICHIAMA della chiamata: gli altri lo aggiornano invece di duplicarlo
   const ritardi = [];
 
   const testo = (chi, t) => chiamata.testo?.(chi, t);
@@ -175,6 +177,16 @@ export function gestisciChiamata(chiamata) {
         if (a.tipo === 'CONFERMA') {
           const [nome, giorno, ora, dettagli, email] = a.argomenti;
           await confermaAppuntamento({ nome, giorno, ora, dettagli, email }, chiamata);
+        }
+        if (a.tipo === 'RICHIAMA') {
+          const [nome, ...motivo] = a.argomenti;
+          if (richiamoId) {
+            const r = await aggiornaRichiamo(richiamoId, { nome, motivo: motivo.join(' ') });
+            if (r) chiamata.log('📞 richiamo aggiornato', r);
+          } else {
+            const esito = await registraRichiamo({ nome, motivo: motivo.join(' ') }, chiamata);
+            if (esito.ok) richiamoId = esito.richiamo.id;
+          }
         }
         if (a.tipo === 'FINE' && !chiudere) {
           chiudere = true;

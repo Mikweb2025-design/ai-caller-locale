@@ -39,7 +39,7 @@ export function paginaAdmin({ api, web, feed }) {
   th { color:var(--tenue); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
   .tabella { overflow-x:auto; }
   .stato { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid currentColor; white-space:nowrap; }
-  .stato.confermato { color:var(--accento); } .stato.annullato { color:var(--tenue); } .stato.da { color:var(--giallo); }
+  .stato.confermato { color:var(--accento); } .stato.annullato { color:var(--tenue); } .stato.da { color:var(--giallo); } .stato.richiamo { color:var(--rosso); } .stato.richiamato { color:var(--tenue); }
   code { background:var(--sfondo); padding:2px 6px; border-radius:6px; word-break:break-all; }
   .posti { display:grid; gap:6px; font-size:14px; }
   .vuoto { color:var(--tenue); font-style:italic; }
@@ -59,7 +59,7 @@ export function paginaAdmin({ api, web, feed }) {
 <main>
   <section data-scheda="Appuntamenti">
     <h2>Appuntamenti</h2>
-    <p class="aiuto">Quelli presi dal receptionist. "Da verificare" = orario già occupato o fuori orario: controllalo tu.</p>
+    <p class="aiuto">Quelli presi dal receptionist, e i richiami che ha promesso (stanno in cima: premi "Fatto" quando li chiami tu). "Da verificare" = orario già occupato o fuori orario: controllalo tu.</p>
     <div class="riga" style="margin-bottom:10px"><label class="check"><input type="checkbox" id="anchePassati"> mostra anche passati e annullati</label></div>
     <div class="tabella"><table><thead><tr><th>Quando</th><th>Nome</th><th>Contatti</th><th>Dettagli</th><th>Stato</th><th></th></tr></thead><tbody id="elenco"></tbody></table></div>
   </section>
@@ -340,12 +340,21 @@ function raccogli() {
 
 const quando = (a) => new Date(a.giorno + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + a.ora;
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+const classeStato = (s) => (s === 'da verificare' ? 'da' : s === 'da richiamare' ? 'richiamo' : s);
 async function elenco() {
   const { appuntamenti } = await chiedi('/appuntamenti');
   const oggi = new Date().toISOString().slice(0, 10);
-  const lista = appuntamenti.filter((a) => $('#anchePassati').checked || (a.stato !== 'annullato' && a.giorno >= oggi))
-    .sort((a, b) => (a.giorno + a.ora).localeCompare(b.giorno + b.ora));
-  $('#elenco').innerHTML = lista.length ? lista.map((a) => '<tr><td>' + quando(a) + '</td><td>' + esc(a.nome) + '</td><td>' + esc([a.telefono, a.email].filter(Boolean).join('<br>') || '-').replace(/&lt;br&gt;/g, '<br>') + '</td><td>' + esc(a.dettagli) + '<br><small class="aiuto">' + esc(a.canale) + '</small></td><td><span class="stato ' + (a.stato === 'da verificare' ? 'da' : a.stato) + '">' + a.stato + '</span></td><td>' + (a.stato !== 'annullato' ? '<button class="secondario" style="padding:5px 12px;font-size:13px;margin:0 6px 6px 0" data-sposta="' + a.id + '" data-quando="' + a.giorno + ' ' + a.ora + '">Sposta</button><button class="pericolo" data-annulla="' + a.id + '">Annulla</button>' : '') + '</td></tr>').join('')
+  const lista = appuntamenti.filter((a) => $('#anchePassati').checked || (a.tipo === 'richiamo' ? a.stato === 'da richiamare' : a.stato !== 'annullato' && a.giorno >= oggi))
+    .sort((a, b) => (a.tipo === 'richiamo' ? ' ' + (a.creato || '') : a.giorno + a.ora).localeCompare(b.tipo === 'richiamo' ? ' ' + (b.creato || '') : b.giorno + b.ora));
+  $('#elenco').innerHTML = lista.length ? lista.map((a) => {
+    const richiamo = a.tipo === 'richiamo';
+    const quandoTxt = richiamo ? '📞 Richiamo' : quando(a);
+    const bottone = (classe, az, testo) => '<button class="' + classe + '" ' + az + ' style="padding:5px 12px;font-size:13px;margin:0 6px 6px 0">' + testo + '</button>';
+    const bottoni = richiamo
+      ? (a.stato === 'da richiamare' ? bottone('secondario', 'data-fatto="' + a.id + '"', 'Fatto') + bottone('pericolo', 'data-annulla="' + a.id + '"', 'Annulla') : '')
+      : (a.stato !== 'annullato' ? bottone('secondario', 'data-sposta="' + a.id + '" data-quando="' + a.giorno + ' ' + a.ora + '"', 'Sposta') + bottone('pericolo', 'data-annulla="' + a.id + '"', 'Annulla') : '');
+    return '<tr><td>' + quandoTxt + '</td><td>' + esc(a.nome) + '</td><td>' + esc([a.telefono, a.email].filter(Boolean).join('<br>') || '-').replace(/&lt;br&gt;/g, '<br>') + '</td><td>' + esc(richiamo ? a.motivo : a.dettagli) + '<br><small class="aiuto">' + esc(a.canale) + '</small></td><td><span class="stato ' + classeStato(a.stato) + '">' + esc(a.stato) + '</span></td><td>' + bottoni + '</td></tr>';
+  }).join('')
     : '<tr><td colspan="6" class="vuoto">Nessun appuntamento.</td></tr>';
 }
 async function posti() {
@@ -363,6 +372,11 @@ $('#elenco').onclick = async (e) => {
     if (!nuovo) return;
     if (!m) return avviso('Formato: 2026-10-30 15:00');
     try { const a = await chiedi('/appuntamenti/' + e.target.dataset.sposta + '/sposta', { method: 'POST', body: { giorno: m[1], ora: m[2] } }); avviso(a.stato === 'confermato' ? 'Appuntamento spostato' : 'Spostato, ma quell’orario non era libero: è "da verificare"'); elenco(); posti(); }
+    catch (err) { avviso(err.message); }
+    return;
+  }
+  if (e.target.dataset.fatto) {
+    try { await chiedi('/appuntamenti/' + e.target.dataset.fatto + '/fatto', { method: 'POST' }); avviso('Segnato come richiamato'); elenco(); }
     catch (err) { avviso(err.message); }
     return;
   }
