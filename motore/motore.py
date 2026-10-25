@@ -6,7 +6,7 @@
 #   GET  /salute
 #
 # Uso: python3 motore/motore.py   (le impostazioni arrivano dal .env del progetto)
-import json, os, threading, time
+import json, os, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -52,8 +52,11 @@ if __name__ == '__main__':
                      f'(curl http://127.0.0.1:{PORTA}/salute). Spegnilo o cambia MOTORE_PORTA nel .env.')
 
 
-def lavoratore_stt(richieste, risposte):
+def lavoratore_stt(richieste, risposte, genitore):
     # Processo a parte: così l'ascolto non aspetta mai che la voce finisca di generare.
+    # Se il motore principale muore (anche con kill), questo si chiude da solo: un processo
+    # orfano terrebbe occupati ~3-6 GB di memoria per sempre.
+    import queue
     if STT_MLX:
         import mlx.core as mx
         from mlx_audio.stt.utils import load_model as carica_stt
@@ -66,7 +69,12 @@ def lavoratore_stt(richieste, risposte):
             modello.generate(mx.zeros(secondi * 16000, dtype=mx.float32))
     risposte.put('pronto')
     while True:
-        pcm8k = richieste.get()
+        try:
+            pcm8k = richieste.get(timeout=2)
+        except queue.Empty:
+            if os.getppid() != genitore:
+                return
+            continue
         a = np.frombuffer(pcm8k, dtype='<i2').astype(np.float32) / 32768
         a = resample_poly(a, 2, 1).astype(np.float32)  # i modelli vogliono 16 kHz
         # MLX prepara i calcoli per ogni lunghezza nuova (~1 s la prima volta): si arrotonda a blocchi
@@ -196,7 +204,11 @@ if __name__ == '__main__':
     ctx = mp.get_context('spawn')
     richieste, risposte = ctx.Queue(), ctx.Queue()
     print(f'carico "{STT_MODELLO}" (processo a parte)...', flush=True)
-    ctx.Process(target=lavoratore_stt, args=(richieste, risposte), daemon=True).start()
+    figlio = ctx.Process(target=lavoratore_stt, args=(richieste, risposte, os.getpid()), daemon=True)
+    figlio.start()
+    import signal, atexit
+    atexit.register(figlio.terminate)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # kill → uscita pulita, che chiude anche il figlio
     risposte.get()
     # un giro a vuoto: il primo uso di MLX è lento, meglio farlo adesso
     for _ in parla('Pronto.'):
