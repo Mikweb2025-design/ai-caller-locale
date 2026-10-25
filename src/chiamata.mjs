@@ -31,6 +31,16 @@ function taglio(s, primo = false) {
   return -1;
 }
 
+// Parakeet sceglie la lingua da solo: eco dell'altoparlante e rumori diventano spesso frasette
+// in inglese ("Yeah, we're here"). Se la frase è fatta soprattutto di parole inglesi, non è il cliente.
+const INGLESE = new Set("yeah yes yep so uh um oh the a an you and hmm we we're here there that that's it it's is are was just why because with what i i'm my me your this of to in on for be have do not but all can will like know right well hi hello bye thank thanks".split(' '));
+const ITALIANO = /[àèéìòù]|\b(che|non|per|sono|il|la|lo|gli|le|un|una|di|da|con|mi|ti|si|ci|ok|okay|no|ciao|grazie|buongiorno|pronto|vorrei|appuntamento|va|bene)\b/i;
+export function nonItaliano(frase) {
+  if (ITALIANO.test(frase)) return false;
+  const parole = frase.toLowerCase().replace(/[^a-z' ]/g, ' ').split(/\s+/).filter(Boolean);
+  return parole.length > 0 && parole.filter((p) => INGLESE.has(p)).length / parole.length >= 0.5;
+}
+
 // Le istruzioni si rifanno a ogni chiamata: impostazioni e posti liberi sono sempre quelli di adesso.
 export async function preparaCervello(chiamante) {
   let posti = '';
@@ -103,7 +113,7 @@ export function gestisciChiamata(chiamata) {
     let t;
     try { t = await trascrivi(pcm); } catch (e) { return chiamata.log('errore ascolto', e.message); }
     const detto = t.testo.trim();
-    if (!detto || /^[\s.,!?…-]*$/.test(detto) || /sottotitoli|amara\.org|grazie per la visione/i.test(detto) || /^(yeah|yes|so|uh|um|oh|the|you|and|hmm)[.!?]?$/i.test(detto)) {
+    if (!detto || /^[\s.,!?…-]*$/.test(detto) || /sottotitoli|amara\.org|grazie per la visione/i.test(detto) || nonItaliano(detto)) {
       fineTurno = 0; // rumore o "allucinazione" tipica di Whisper sul silenzio
       return;
     }
