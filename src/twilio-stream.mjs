@@ -38,7 +38,10 @@ export class ChiamataTwilio {
           this.chiamante = this.parametri.from || null;
           this.file = join(cartellaLog, `${new Date().toISOString().replace(/[:.]/g, '-')}-${versione}.log`);
           this.log('📞 chiamata', { callSid: this.callSid, da: this.chiamante, a: this.parametri.to, web: this.web });
-          this.alPartire?.();
+          Promise.resolve(this.alPartire?.()).catch((e) => {
+            this.log('errore avvio chiamata', e.message);
+            this.ws.close();
+          });
           break;
         case 'media':
           this.msTwilio = Number(m.media.timestamp);
@@ -51,7 +54,8 @@ export class ChiamataTwilio {
           break;
         }
         case 'testo': // solo dal browser: frase scritta in chat
-          if (this.web) this.alTestoScritto?.(String(m.testo || '').slice(0, 500));
+          if (this.web) Promise.resolve(this.alTestoScritto?.(String(m.testo || '').slice(0, 500)))
+            .catch((e) => this.log('errore testo chiamata', e.message));
           break;
         case 'stop':
           this.log('📴 Twilio ha chiuso lo stream');

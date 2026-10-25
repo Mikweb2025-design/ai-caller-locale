@@ -284,7 +284,9 @@ export function gestisciChiamata(chiamata) {
       voce = 0;
       const audio = Buffer.concat(frase);
       frase = [];
-      if (audio.length / 16 >= v.minimoMs + v.silenzioMs) allaFrase(audio);
+      if (audio.length / 16 >= v.minimoMs + v.silenzioMs) {
+        allaFrase(audio).catch((e) => chiamata.log('errore elaborazione frase', e.message));
+      }
     }
   };
 

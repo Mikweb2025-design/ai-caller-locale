@@ -3,7 +3,10 @@
 import WebSocket from 'ws';
 import { writeFileSync } from 'node:fs';
 const frasi = process.argv.slice(2);
-const ws = new WebSocket('ws://127.0.0.1:5050/media/web/locale');
+process.loadEnvFile?.();
+const segreto = process.env.SEGRETO || 'locale';
+const baseWs = (process.env.WS_BASE || 'ws://127.0.0.1:5050').replace(/\/$/, '');
+const ws = new WebSocket(`${baseWs}/media/web/${segreto}`);
 const sid = 'MZprova'; const audio = []; let marche = []; let ultimoAudio = 0; let attesa = false; let turno = 0; let tTesto = 0;
 const invia = (o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
 ws.on('open', () => {
@@ -22,4 +25,4 @@ ws.on('message', (d) => {
   if (m.event === 'testo') { console.log(`${m.chi === 'cliente' ? '👤' : '🤖'} ${m.testo}`); if (m.chi === 'receptionist') { attesa = true; tTesto = Date.now(); } }
 });
 ws.on('close', () => { if (process.env.OUT) writeFileSync(process.env.OUT, Buffer.concat(audio)); process.exit(0); });
-setTimeout(() => ws.close(), 180000);
+setTimeout(() => ws.close(), Number(process.env.DURATA_MS || 180000));
