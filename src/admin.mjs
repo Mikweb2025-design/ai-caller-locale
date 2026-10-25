@@ -97,6 +97,10 @@ export function paginaAdmin({ api, web, feed }) {
       <div><label>Nome</label><input data-k="receptionist.nome"></div>
       <div><label>Genere <small>(per l'italiano: pronto/pronta)</small></label><select data-k="receptionist.genere"><option value="m">uomo</option><option value="f">donna</option></select></div>
     </div>
+    <h2 style="margin-top:18px">Più umano al telefono</h2>
+    <p class="aiuto">I piccoli segni della persona che ascolta invece del centralino: sempre gentile e professionale, ma vivo.</p>
+    <label class="check"><input type="checkbox" data-k="receptionist.scherza"> <strong>Scherza con il cliente</strong> <small>quando lui scherza o è alla leggera: una battuta ogni 2-3 risposte, mai sui suoi problemi</small></label>
+    <div style="margin-top:12px"><label>Intercalari <small>(espressioni sparse nel discorso, come "allora", "senti", "guarda": separati da virgola. Vuoto = niente intercalari, è lo stile base)</small></label><input data-k="receptionist.intercalare" placeholder="es. allora, senti, guarda"></div>
     <h2 style="margin-top:18px">Lingue</h2>
     <p class="aiuto">L'italiano c'è sempre. Con il tedesco il receptionist risponde nella lingua di chi chiama (italiano o Deutsch), anche dentro la stessa telefonata.</p>
     <label class="check"><input type="checkbox" data-k="lingue.tedesco"> Rispondi anche in tedesco</label>

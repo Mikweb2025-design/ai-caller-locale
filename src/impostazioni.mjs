@@ -40,6 +40,8 @@ export const PREDEFINITE = {
     saluto: '', // vuoto = "<attività>, buongiorno! Sono <nome>, mi dica."
     note: '', // istruzioni in più, in italiano
     voce: { campione: '' }, // nome del file .wav in voci/ scelto dal pannello; vuoto = voci/receptionist.wav
+    scherza: true, // se il cliente scherza, scherza anche lui (una battuta ogni tanto; può disattivarlo qui)
+    intercalare: '', // espressioni come "senti", "guarda": vuoto = nessuno, niente intercalari
   },
   orari: {
     // fasce di apertura per giorno, "08:00-12:30, 14:00-18:30" (vuoto = chiuso)
