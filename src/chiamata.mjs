@@ -139,6 +139,7 @@ export function gestisciChiamata(chiamata) {
   function collegaCervello() {
     cervello.alTesto = (pezzo, n) => {
       if (n !== turno) return; // risposta a una frase ormai superata
+      if (!bufferTesto && !giaDetto && fineTurno) chiamata.log(`🧠 primo testo di Claude dopo ${Date.now() - fineTurno} ms`);
       bufferTesto += pezzo;
       let i;
       while ((i = taglio(bufferTesto, !giaDetto)) > 0) {

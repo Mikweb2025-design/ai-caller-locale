@@ -42,5 +42,15 @@ export const COPIONI = {
     'Ok. Sì, solo il tagliando, è tutto.',
     'No, nient\'altro, grazie.',
   ],
+  // Lasercamp: una cliente che vuole oggetti incisi e personalizzati per un evento aziendale
+  lasercamp: [
+    'Buongiorno! Volevo delle informazioni per delle lavorazioni laser.',
+    "Allora, per un evento della mia azienda vorremmo regalare dei portachiavi in legno con il nostro logo inciso. E magari anche delle targhette in plexiglas.",
+    'Saranno più o meno duecento pezzi. Il logo ce l\'ho, ma non so se va bene per il laser.',
+    'Ah, perfetto. Martedì alle dieci mi andrebbe benissimo.',
+    'Chiara Galli, della Galli Eventi.',
+    'Sì, è tutto. Le mando il logo per email allora.',
+    'No, a posto così, grazie mille. Buona giornata!',
+  ],
 };
 export const COPIONE = COPIONI.base;
