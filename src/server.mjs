@@ -15,6 +15,7 @@ import { paginaWeb } from './web.mjs';
 import { salutoSegmenti } from './persona.mjs';
 import { frasePronta } from './voce.mjs';
 import { paginaAdmin } from './admin.mjs';
+import { paginaDomandaConferma, paginaEsitoConferma } from './conferma.mjs';
 import { cercaCalendari, SERVIZI } from './caldav.mjs';
 import { avviaImportazione, statoImportazione, datiDesign } from './sito.mjs';
 import { recupera, controllaUrl } from './rete.mjs';
@@ -22,7 +23,7 @@ import { SERVIZI_CERVELLO, elencaModelli, provaConversazione } from './cervello.
 import { istruzioni } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
 import { impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
-import { appuntamenti, annulla, sposta, richiamoFatto, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma, sincronizzaManca } from './agenda.mjs';
+import { appuntamenti, annulla, sposta, richiamoFatto, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma, sincronizzaManca, chiediConferma, chiediConfermaProssimi, rispondiConferma } from './agenda.mjs';
 
 const segreto = SEGRETO;
 if (urlPubblico() && !process.env.SEGRETO) console.error('⚠️ URL pubblico impostato ma manca SEGRETO nel .env: il server rifiuta le richieste da internet finché non lo metti.');
@@ -111,6 +112,16 @@ const server = http.createServer(async (req, res) => {
       const base = urlPubblico() || `http://${req.headers.host}`;
       return html(paginaAdmin({ api: `/api/${segreto}`, web: segreto === 'locale' ? '/' : `/web/${segreto}`, feed: `${base}/calendario/${segreto}.ics` }));
     }
+    // Conferma dell'appuntamento dal cliente: il link che arriva per email (id + token, nessun segreto del pannello)
+    const conferma = url.pathname.match(/^\/conferma\/([a-f0-9]+)\/([a-f0-9]+)(?:\/(si|no))?$/);
+    if (req.method === 'GET' && conferma) {
+      const [, id, token, scelta] = conferma;
+      const r = rispondiConferma(id, token, scelta || '');
+      if (!r.ok) return html(paginaEsitoConferma({ appuntamento: r.appuntamento, esito: r.motivo }));
+      if (!scelta) return html(paginaDomandaConferma({ appuntamento: r.appuntamento, si: `${url.pathname}/si`, no: `${url.pathname}/no` }));
+      console.log(`✉️ ${r.appuntamento.nome}: ${r.risposta === 'si' ? 'confermato' : 'non può venire'} (${r.appuntamento.giorno} ${r.appuntamento.ora})`);
+      return html(paginaEsitoConferma({ appuntamento: r.appuntamento, esito: r.appuntamento.confermaEsito }));
+    }
     if (url.pathname.startsWith(`/api/${segreto}/`)) {
       const percorso = url.pathname.slice(`/api/${segreto}`.length);
       const corpo = req.method === 'POST' ? JSON.parse((await leggiCorpo(req)) || '{}') : null;
@@ -126,6 +137,15 @@ const server = http.createServer(async (req, res) => {
         return json(200, impostazioniPubbliche());
       }
       if (percorso === '/appuntamenti') return json(200, { appuntamenti: appuntamenti() });
+      // Chiedi al cliente di confermare l'appuntamento: un'email con i due link (uno solo, o a tutti i prossimi)
+      if (percorso === '/appuntamenti/chiedi-conferma' && req.method === 'POST') {
+        try { return json(200, await chiediConfermaProssimi()); } catch (e) { return json(400, { errore: e.message }); }
+      }
+      const cc = percorso.match(/^\/appuntamenti\/([a-f0-9]+)\/chiedi-conferma$/);
+      if (cc && req.method === 'POST') {
+        try { const r = await chiediConferma(cc[1]); return json(200, { appuntamento: r.appuntamento, link: r.link }); }
+        catch (e) { return json(400, { errore: e.message }); }
+      }
       // Voci del receptionist: elenco, ascolto, nuova voce registrata dal microfono, attivazione, rimozione
       if (percorso === '/voce/elenco') {
         const attiva = String(impostazioni().receptionist?.voce?.campione || '') || 'receptionist.wav';

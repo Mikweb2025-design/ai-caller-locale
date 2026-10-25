@@ -244,8 +244,12 @@ I posti liberi si calcolano da orari di apertura, appuntamenti già presi e dai 
 
 ## Email e SMS di conferma
 
-- **Email (SMTP).** Imposta server, porta, utente e password nella scheda **Email e SMS** (Gmail: `smtp.gmail.com`, porta 465 con "sicura" attiva, una password per le app). A ogni prenotazione parte un'email al titolare (indirizzi separati da virgola) e, se chi ha chiamato ha lasciato di sua iniziativa un indirizzo email, una conferma anche a lui. Entrambe portano allegato un evento `.ics`. Il pulsante "Manda email di prova" controlla le impostazioni. Il receptionist non chiede mai l'email: la usa solo se chi chiama la offre.
+- **Email (SMTP).** Imposta server, porta, utente e password nella scheda **Email e SMS** (Gmail: `smtp.gmail.com`, porta 465 con "sicura" attiva, una password per le app). Nella stessa scheda trovi due opzioni:
+  - **Manda la conferma al cliente**: a ogni prenotazione parte un'email al titolare e, se il cliente ha lasciato l'email, una conferma anche a lui (entrambe con allegato `.ics`).
+  - **Chiedi al cliente di confermare l'appuntamento**: il cliente riceve un'email con due pulsanti (*Sì, confermo* / *Non posso venire*); l'esito compare nel pannello. Se disattivi questa opzione, le prenotazioni restano normali (nessuna email automatica), ma puoi sempre chiedere la conferma dopo dalla scheda **Appuntamenti**.
+  Il receptionist non chiede mai l'email: la usa solo se chi chiama la offre.
 - **SMS.** Con Twilio configurato e "SMS attivi" spuntato (oppure `CON_SMS=1`), al numero di chi ha chiamato arriva un SMS con giorno e ora.
+- **Chiedere al cliente di confermare.** Nella scheda **Appuntamenti** il pulsante **✉️ Chiedi conferma** (su una riga, o su tutti i prossimi) manda al cliente un'email con due pulsanti: *Sì, confermo* e *Non posso venire*. Il cliente risponde con un clic e l'esito compare accanto all'appuntamento ("confermato dal cliente", "non può venire: richiamalo"). I link usano l'indirizzo pubblico del server (scheda Telefono): senza, l'email chiede di rispondere per confermare.
 
 ## Twilio: un numero di telefono vero
 
@@ -482,3 +486,14 @@ Crediti:
 - Esecuzione: [MLX](https://github.com/ml-explore/mlx) e [mlx-audio](https://github.com/Blaizzy/mlx-audio) per far girare i modelli su Apple Silicon.
 - Cervello: [Claude Code](https://claude.com/claude-code) di Anthropic, oppure il servizio compatibile OpenAI che scegli.
 - Lasercamp ([lasercamp.it](https://lasercamp.it)) è usato solo come esempio realistico di piccola attività; i dati dell'esempio vengono dal suo sito pubblico.
+
+### Come usare la conferma degli appuntamenti
+
+1. **Configura l'indirizzo pubblico** (scheda Telefono) se vuoi che i link funzionino: senza, il cliente deve rispondere all'email.
+2. **Manda la richiesta di conferma:**
+   - Singolo appuntamento: pulsante **✉️ Chiedi conferma** nella riga dell'appuntamento.
+   - Tutti i prossimi: pulsante **✉️ Chiedi conferma ai prossimi** in cima alla scheda.
+3. **Il cliente riceve un'email** con due pulsanti: *Sì, confermo* e *Non posso venire*.
+4. **L'esito compare nel pannello:** "confermato dal cliente" (verde) o "non può venire: richiamalo" (rosso).
+
+**Nota:** i link non usano il segreto del pannello (solo id + token), quindi il cliente li può aprire da qualsiasi dispositivo.

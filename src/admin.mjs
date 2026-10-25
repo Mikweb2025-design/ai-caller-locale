@@ -65,7 +65,11 @@ export function paginaAdmin({ api, web, feed }) {
   <section data-scheda="Appuntamenti">
     <h2>Appuntamenti</h2>
     <p class="aiuto">Quelli presi dal receptionist, e i richiami che ha promesso (stanno in cima: premi "Fatto" quando li chiami tu). "Da verificare" = orario già occupato o fuori orario: controllalo tu.</p>
-    <div class="riga" style="margin-bottom:10px"><label class="check"><input type="checkbox" id="anchePassati"> mostra anche passati e annullati</label></div>
+    <div class="riga" style="margin-bottom:10px;flex-wrap:wrap;gap:12px">
+      <label class="check"><input type="checkbox" id="anchePassati"> mostra anche passati e annullati</label>
+      <button class="secondario" type="button" id="chiediTutti" style="margin-left:auto">✉️ Chiedi conferma ai prossimi</button>
+    </div>
+    <p class="aiuto" style="margin-top:-4px">"Chiedi conferma" manda al cliente un'email con due pulsanti: <strong>Sì, confermo</strong> oppure <strong>Non posso venire</strong>. L'esito compare accanto all'appuntamento. Per i link serve l'indirizzo pubblico del server (scheda Telefono); senza, l'email chiede di rispondere per confermare.</p>
     <div class="tabella"><table><thead><tr><th>Quando</th><th>Nome</th><th>Contatti</th><th>Dettagli</th><th>Stato</th><th></th></tr></thead><tbody id="elenco"></tbody></table></div>
   </section>
 
@@ -224,6 +228,8 @@ export function paginaAdmin({ api, web, feed }) {
       <div><label>Avvisa a ogni prenotazione <small>(email, separate da virgola)</small></label><input data-k="email.avvisaA"></div>
     </div>
     <label class="check" style="margin-top:12px"><input type="checkbox" data-k="email.confermaAlCliente"> Manda la conferma al cliente se ha lasciato l'email</label>
+    <label class="check" style="margin-top:12px"><input type="checkbox" data-k="email.chiediConferma"> Chiedi al cliente di confermare l'appuntamento (email con pulsanti Sì/No)</label>
+    <p class="aiuto" style="margin-top:6px">Se attivo: a ogni prenotazione il cliente riceve un'email con due pulsanti (<strong>Sì, confermo</strong> / <strong>Non posso venire</strong>). Se disattivo: la prenotazione è normale, senza email di conferma automatica (puoi sempre chiederla dopo dalla scheda Appuntamenti).</p>
     <div class="riga" style="margin-top:12px"><input id="emailProva" placeholder="la tua email" style="max-width:280px"><button class="secondario" type="button" id="provaEmail">Manda email di prova</button></div>
     <h2 style="margin-top:22px">SMS di conferma</h2>
     <p class="aiuto">Con Twilio configurato (scheda Telefono, oppure nel file .env), al cliente che chiama arriva un SMS con giorno e ora.</p>
@@ -395,10 +401,18 @@ async function elenco() {
     const richiamo = a.tipo === 'richiamo';
     const quandoTxt = richiamo ? '📞 Richiamo' : quando(a);
     const bottone = (classe, az, testo) => '<button class="' + classe + '" ' + az + ' style="padding:5px 12px;font-size:13px;margin:0 6px 6px 0">' + testo + '</button>';
+    const chiedi = a.stato !== 'annullato' && a.email && a.confermaEsito !== 'confermata'
+      ? bottone('secondario', 'data-chiedi="' + a.id + '"', a.confermaChiesta ? 'Sollecita conferma' : 'Chiedi conferma')
+      : '';
     const bottoni = richiamo
       ? (a.stato === 'da richiamare' ? bottone('secondario', 'data-fatto="' + a.id + '"', 'Fatto') + bottone('pericolo', 'data-annulla="' + a.id + '"', 'Annulla') : '')
-      : (a.stato !== 'annullato' ? bottone('secondario', 'data-sposta="' + a.id + '" data-quando="' + a.giorno + ' ' + a.ora + '"', 'Sposta') + bottone('pericolo', 'data-annulla="' + a.id + '"', 'Annulla') : '');
-    return '<tr><td>' + quandoTxt + '</td><td>' + esc(a.nome) + '</td><td>' + esc([a.telefono, a.email].filter(Boolean).join('<br>') || '-').replace(/&lt;br&gt;/g, '<br>') + '</td><td>' + esc(richiamo ? a.motivo : a.dettagli) + '<br><small class="aiuto">' + esc(a.canale) + '</small></td><td><span class="stato ' + classeStato(a.stato) + '">' + esc(a.stato) + '</span></td><td>' + bottoni + '</td></tr>';
+      : (a.stato !== 'annullato' ? bottone('secondario', 'data-sposta="' + a.id + '" data-quando="' + a.giorno + ' ' + a.ora + '"', 'Sposta') + chiedi + bottone('pericolo', 'data-annulla="' + a.id + '"', 'Annulla') : '');
+    const conferma = richiamo ? '' : a.confermaEsito === 'confermata'
+      ? '<span class="stato confermato">confermato dal cliente</span>'
+      : a.confermaEsito === 'non puo'
+        ? '<span class="stato richiamo">non può venire: richiamalo</span>'
+        : a.confermaChiesta ? '<span class="stato da">conferma chiesta</span>' : '';
+    return '<tr><td>' + quandoTxt + '</td><td>' + esc(a.nome) + '</td><td>' + esc([a.telefono, a.email].filter(Boolean).join('<br>') || '-').replace(/&lt;br&gt;/g, '<br>') + '</td><td>' + esc(richiamo ? a.motivo : a.dettagli) + '<br><small class="aiuto">' + esc(a.canale) + '</small></td><td><div style="display:flex;gap:4px;flex-wrap:wrap"><span class="stato ' + classeStato(a.stato) + '">' + esc(a.stato) + '</span>' + conferma + '</div></td><td>' + bottoni + '</td></tr>';
   }).join('')
     : '<tr><td colspan="6" class="vuoto">Nessun appuntamento.</td></tr>';
 }
@@ -446,6 +460,16 @@ $('#elenco').onclick = async (e) => {
     catch (err) { avviso(err.message); }
     return;
   }
+  if (e.target.dataset.chiedi) {
+    const b = e.target;
+    b.disabled = true;
+    try {
+      const r = await chiedi('/appuntamenti/' + b.dataset.chiedi + '/chiedi-conferma', { method: 'POST' });
+      avviso(r.link ? 'Email di conferma inviata a ' + r.appuntamento.email : 'Email inviata a ' + r.appuntamento.email + ' (senza link: manca l\u2019indirizzo pubblico, il cliente deve rispondere)', 7000);
+      elenco();
+    } catch (err) { avviso('Email non partita: ' + err.message, 8000); b.disabled = false; }
+    return;
+  }
   if (e.target.dataset.fatto) {
     try { await chiedi('/appuntamenti/' + e.target.dataset.fatto + '/fatto', { method: 'POST' }); avviso('Segnato come richiamato'); elenco(); }
     catch (err) { avviso(err.message); }
@@ -456,6 +480,17 @@ $('#elenco').onclick = async (e) => {
   try { await chiedi('/appuntamenti/' + id + '/annulla', { method: 'POST' }); avviso('Appuntamento annullato'); elenco(); posti(); } catch (err) { avviso(err.message); }
 };
 $('#anchePassati').onchange = elenco;
+$('#chiediTutti').onclick = async () => {
+  if (!confirm('Mandare l\u2019email di conferma a tutti i prossimi appuntamenti che hanno un indirizzo email? Chi ha già confermato viene saltato.')) return;
+  const b = $('#chiediTutti');
+  b.disabled = true;
+  try {
+    const r = await chiedi('/appuntamenti/chiedi-conferma', { method: 'POST' });
+    avviso(r.inviate ? 'Email di conferma inviate: ' + r.inviate + (r.errori.length ? ' · non partite: ' + r.errori.join('; ') : '') : 'Nessun appuntamento da sollecitare' + (r.errori.length ? ' · ' + r.errori.join('; ') : ''), 8000);
+    elenco();
+  } catch (e) { avviso('Non partite: ' + e.message, 8000); }
+  b.disabled = false;
+};
 $('#salva').onclick = async () => {
   try { dati = await chiedi('/impostazioni', { method: 'POST', body: raccogli() }); riempi(); avviso('Salvato. Vale dalla prossima chiamata.'); posti(); }
   catch (e) { avviso('Non salvato: ' + e.message, 6000); }

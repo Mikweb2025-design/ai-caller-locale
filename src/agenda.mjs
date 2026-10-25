@@ -3,11 +3,12 @@
 // Tutti gli orari sono in ora italiana (Europe/Rome).
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { impostazioni, fasce, GIORNI, CARTELLA_DATI, proteggi } from './impostazioni.mjs';
 import { recupera } from './rete.mjs';
 import { leggiEventi, salvaEvento, cancellaEvento, eventoNostro } from './caldav.mjs';
+import { urlPubblico } from './twilio.mjs';
 
 const FILE = join(CARTELLA_DATI, 'appuntamenti.json');
 const ZONA = 'Europe/Rome';
@@ -264,7 +265,7 @@ export async function richiamoFatto(id) {
 
 // --- prenotazione ---
 export async function prenota({ nome, giorno, ora, dettagli = '', email = '', telefono = '', canale = '' }) {
-  const { agenda } = impostazioni();
+  const { agenda, email: cfgEmail } = impostazioni();
   const min = minutiDa(ora);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(giorno || '') || min === null) throw new Error(`data o ora non valida: ${giorno} ${ora}`);
   const libero = (await postiLiberi()).some((p) => p.giorno === giorno && p.minuti === min);
@@ -279,7 +280,12 @@ export async function prenota({ nome, giorno, ora, dettagli = '', email = '', te
   const lista = appuntamenti();
   lista.push(a);
   salva(lista);
-  const [esiti, erroriCalendario] = await Promise.all([avvisa(a).catch((e) => ({ errore: e.message })), sincronizza(a)]);
+  // email di conferma: parte solo se l'admin ha attivato "chiedi conferma" nelle impostazioni
+  const inviaEmail = cfgEmail.attiva && cfgEmail.chiediConferma;
+  const [esiti, erroriCalendario] = await Promise.all([
+    inviaEmail ? avvisa(a).catch((e) => ({ errore: e.message })) : { emailTitolare: 'disattivata', emailCliente: 'disattivata' },
+    sincronizza(a),
+  ]);
   return { appuntamento: a, ...esiti, calendari: erroriCalendario.length ? erroriCalendario : 'ok' };
 }
 
@@ -324,6 +330,109 @@ export async function emailDiProva(a) {
   await t.verify();
   const e = impostazioni().email;
   await t.sendMail({ from: e.mittente || e.utente, to: a, subject: 'Prova dal receptionist AI', text: 'Le email di conferma funzionano.' });
+}
+
+// --- chiedere al cliente di confermare l'appuntamento ---
+// Dal pannello (scheda Appuntamenti) si manda al cliente un'email con due link: confermo / non posso venire.
+// I link portano a /conferma/<id>/<token>/<si|no>; il token è casuale e sta nell'appuntamento.
+const basePubblica = () => String(urlPubblico() || '').trim().replace(/\/+$/, '');
+const linkBase = (a) => `${basePubblica()}/conferma/${a.id}/${a.confermaToken}`;
+export const linkConferma = (a) => (basePubblica() && a.confermaToken ? linkBase(a) : null);
+
+export function testoChiediConferma(a, { si, no } = {}) {
+  const { attivita } = impostazioni();
+  const quando = `${giornoParlato(a.giorno)} alle ${a.ora}`;
+  return [
+    `${attivita.nome}: ciao ${a.nome.split(' ')[0] || ''},`,
+    `le scriviamo per il suo appuntamento di ${quando}${a.dettagli ? ` (${a.dettagli})` : ''}.`,
+    si ? `Ci conferma che viene? Basta un clic qui: ${si}` : 'Ci conferma che viene rispondendo a questa email?',
+    no ? `Se non riesce a venire, lo dica qui: ${no}` : '',
+    attivita.indirizzo ? `Ci trovi in ${attivita.indirizzo}.` : '',
+    attivita.telefono ? `Per parlare con noi: ${attivita.telefono}.` : '',
+    'Grazie e a presto!',
+  ].filter(Boolean).join('\n\n');
+}
+
+function htmlChiediConferma(a, { si, no } = {}) {
+  const { attivita } = impostazioni();
+  const bottone = (href, testo, sfondo) => `<a href="${href}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:${sfondo};color:#fff;text-decoration:none;font-weight:600">${testo}</a>`;
+  return `<div style="font:16px/1.5 system-ui,sans-serif;color:#1d1d1b;max-width:520px">
+  <p>Ciao ${a.nome.split(' ')[0] || ''},</p>
+  <p>le scriviamo per il suo appuntamento di <strong>${giornoParlato(a.giorno)} alle ${a.ora}</strong>${a.dettagli ? ` (${a.dettagli})` : ''}.</p>
+  <p>Ci conferma che viene?</p>
+  <p>${si ? bottone(si, 'Sì, confermo', '#2e8b57') : ''}${no ? ' ' + bottone(no, 'Non posso venire', '#b03a2e') : ''}</p>
+  ${attivita.indirizzo ? `<p>Ci trovi in ${attivita.indirizzo}.</p>` : ''}
+  ${attivita.telefono ? `<p>Per parlare con noi: ${attivita.telefono}.</p>` : ''}
+  <p>Grazie e a presto!<br>${attivita.nome}</p>
+</div>`;
+}
+
+export async function chiediConferma(id) {
+  const t = postino();
+  if (!t) throw new Error('le email non sono attive: configura il server SMTP nella scheda "Email e SMS"');
+  const lista = appuntamenti();
+  const a = lista.find((x) => x.id === id);
+  if (!a) throw new Error('appuntamento non trovato');
+  if (a.tipo === 'richiamo') throw new Error('questo è un richiamo, non un appuntamento');
+  if (a.stato === 'annullato') throw new Error("l'appuntamento è annullato");
+  if (!String(a.email || '').trim()) throw new Error('il cliente non ha lasciato un indirizzo email');
+  if (a.confermaEsito === 'confermata') throw new Error('il cliente ha già confermato questo appuntamento');
+
+  // il token si salva prima di spedire: se l'invio riesce, il link funziona già
+  a.confermaToken ||= randomBytes(16).toString('hex');
+  salva(lista);
+
+  const base = linkConferma(a);
+  const si = base ? `${base}/si` : null;
+  const no = base ? `${base}/no` : null;
+  const { attivita } = impostazioni();
+  const e = impostazioni().email;
+  await t.sendMail({
+    from: e.mittente || e.utente,
+    to: a.email,
+    subject: `Confermi l'appuntamento di ${giornoParlato(a.giorno)} alle ${a.ora}? – ${attivita.nome}`,
+    text: testoChiediConferma(a, { si, no }),
+    html: htmlChiediConferma(a, { si, no }),
+  });
+
+  a.confermaChiesta = new Date().toISOString();
+  a.confermaInvii = (Number(a.confermaInvii) || 0) + 1;
+  salva(lista);
+  return { appuntamento: a, link: Boolean(base) };
+}
+
+// Chiede la conferma a tutti i prossimi appuntamenti che hanno un'email e non hanno ancora confermato.
+export async function chiediConfermaProssimi() {
+  const { agenda } = impostazioni();
+  const oggi = inRoma().iso;
+  const fino = piuGiorni(oggi, Number(agenda.giorniAvanti) || 14);
+  const candidati = appuntamenti().filter((a) => !a.tipo && a.stato !== 'annullato' && String(a.email || '').trim()
+    && (a.giorno || '') >= oggi && a.giorno <= fino && a.confermaEsito !== 'confermata');
+  const esiti = { inviate: 0, errori: [] };
+  for (const a of candidati) {
+    try { await chiediConferma(a.id); esiti.inviate++; } catch (err) { esiti.errori.push(`${a.nome}: ${err.message}`); }
+  }
+  return esiti;
+}
+
+// Il cliente ha aperto il link: con scelta '' si controlla solo che sia valido, con 'si'/'no' si registra la risposta.
+const tokenValido = (a, token) => {
+  const atteso = Buffer.from(String(a.confermaToken || ''));
+  const dato = Buffer.from(String(token || ''));
+  return atteso.length > 0 && atteso.length === dato.length && timingSafeEqual(atteso, dato);
+};
+
+export function rispondiConferma(id, token, scelta = '') {
+  const lista = appuntamenti();
+  const a = lista.find((x) => x.id === id);
+  if (!a) return { ok: false, motivo: 'non trovato' };
+  if (!tokenValido(a, token)) return { ok: false, motivo: 'link' };
+  if (a.stato === 'annullato') return { ok: false, motivo: 'annullato', appuntamento: a };
+  if (scelta !== 'si' && scelta !== 'no') return { ok: true, appuntamento: a };
+  a.confermaCliente = new Date().toISOString();
+  a.confermaEsito = scelta === 'si' ? 'confermata' : 'non puo';
+  salva(lista);
+  return { ok: true, appuntamento: a, risposta: scelta };
 }
 
 // --- calendario da abbonarsi (Google Calendar, Apple Calendario, Outlook) ---
