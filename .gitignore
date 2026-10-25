@@ -17,3 +17,10 @@ voci-receptionist.zip
 
 node_modules/
 *.log
+
+# Claude Code locale
+.claude/settings.local.json
+
+# Claude Code locale
+.claude/settings.local.json
+__pycache__/

@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="demo/telefonata-versione-2.mp3">🎧 Ascolta una telefonata</a>
+  <a href="demo/telefonata-locale.mp3">🎧 Ascolta una telefonata</a>
   &nbsp;·&nbsp;
   <a href="https://cosmio.it/prenota?da=ai-caller">📅 Lo voglio nella mia attività</a>
 </p>
@@ -40,42 +40,18 @@ Il receptionist AI risponde al primo squillo, ogni volta. Accoglie il cliente, c
 
 ## Ascolta come suona
 
-Due telefonate al nostro centralino di prova. Il cliente è una voce di prova; il receptionist è l'AI, esattamente come risponde al telefono.
+🎧 [Una telefonata simulata](demo/telefonata-locale.mp3): il cliente è una voce di prova, il receptionist è l'AI, esattamente come risponde al telefono.
 
-- 🎧 [Versione 2, la più umana](demo/telefonata-versione-2.mp3) (1 minuto e mezzo)
-- 🎧 [Versione 1, la più veloce](demo/telefonata-versione-1.mp3) (1 minuto e venti)
+## Tutto in locale, niente modelli a pagamento
 
-Un pezzo della telefonata:
+| | |
+|---|---|
+| **Orecchie** | [Parakeet TDT v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) (NVIDIA, open source) su MLX: ~0,15 s per frase. In alternativa faster-whisper |
+| **Cervello** | **Claude Code** (`claude -p` in streaming), con il tuo abbonamento: nessuna chiave API |
+| **Voce** | [Qwen3-TTS](https://huggingface.co/Qwen) (open source, Apache 2.0) su MLX: primo audio in ~0,2 s, anche clonando una voce italiana da un campione |
+| **Telefono** | Twilio, facoltativo. Per provarlo basta il browser: microfono, altoparlante e chat |
 
-> **Receptionist:** Officina Marchetti, buongiorno! Sono Luca, mi dica.
->
-> **Cliente:** Buongiorno! Volevo sapere se avete posto per un appuntamento.
->
-> **Receptionist:** Allora, guardi, siamo pienissimi… l'unico giorno che ho libero è martedì: alle nove, alle undici e mezza o alle due del pomeriggio.
->
-> **Cliente:** Le nove vanno benissimo.
->
-> **Receptionist:** Perfetto, alle nove allora. A che nome la segno?
->
-> *(…nome e macchina…)*
->
-> **Cliente:** Devo fare il tagliando, cambiare le pastiglie davanti, mi si è accesa la spia del motore, il clima non fa più freddo… e già che ci siete controllatemi i liquidi.
->
-> **Receptionist:** Mamma mia, quasi quasi è una revisione completa! Allora, ricapitolo: tagliando, pastiglie davanti, spia del motore, clima e liquidi. È tutto?
-
-## Due versioni: scegli quella giusta per te
-
-| | ⚡ Versione 1: la più veloce | 🎙️ Versione 2: la più umana |
-|---|---|---|
-| **In una frase** | Risponde praticamente all'istante | Una voce italiana così naturale che sembra una persona |
-| **Tempo di risposta** | circa 1 secondo | circa 1 secondo, poco di più sulle domande complicate |
-| **La voce** | voce AI chiara e professionale | voce di un doppiatore italiano madrelingua, con risatine e sospiri al momento giusto |
-| **Il "cervello"** | OpenAI Realtime: ascolta e risponde a voce in un solo passaggio | Claude di Anthropic per capire e rispondere, ElevenLabs per la voce |
-| **Ideale se** | ricevi tante chiamate brevi e conta la rapidità | vuoi che chi chiama si senta accolto da una persona |
-
-**Versione 1, la più veloce.** Usa il modello vocale di OpenAI, che ascolta e risponde a voce senza passaggi intermedi. Per questo la risposta arriva prima di quanto ci metterebbe una persona a dire "allora…". È perfetta quando le chiamate sono tante e brevi.
-
-**Versione 2, la più umana.** Qui conta la voce. Usa le voci di veri doppiatori italiani (ElevenLabs v4), anche con un accento regionale leggero, e Claude per capire e rispondere. Il risultato è una conversazione calda, con le pause e le esitazioni di una persona vera. È un filo più lenta solo sulle domande più complicate, e lì riempie l'attesa come farebbe chiunque: "Mmh, allora…".
+Su un Mac con Apple Silicon il receptionist risponde in circa 1,5–2 secondi dalla fine della frase del cliente.
 
 ## Per chi è
 
@@ -96,7 +72,7 @@ Questo progetto è gratuito e il codice è qui sotto. Se non hai tempo o compete
 3. **Lo colleghiamo.** Un numero nuovo o il tuo numero di sempre (con l'inoltro di chiamata) e, se vuoi, il tuo calendario o gestionale e gli SMS di conferma.
 4. **Lo provi, lo sistemiamo insieme e parte.**
 
-Funziona con un costo d'uso di pochi centesimi per minuto di telefonata (servizi AI e linea telefonica): molto meno di un cliente perso.
+I modelli girano tutti sul tuo Mac: si paga solo la linea telefonica (se usi Twilio).
 
 <p align="center">
   <a href="https://cosmio.it/prenota?da=ai-caller"><strong>📅 Prenota la call gratuita con Cosmio</strong></a>
@@ -104,7 +80,12 @@ Funziona con un costo d'uso di pochi centesimi per minuto di telefonata (servizi
 
 ## Sei uno sviluppatore?
 
-Il codice è tutto in questa repository. In [GUIDA-TECNICA.md](GUIDA-TECNICA.md) trovi come funziona, come installarlo con il tuo numero Twilio e come adattarlo alla tua attività.
+Il codice è tutto in questa repository. In [GUIDA-TECNICA.md](GUIDA-TECNICA.md) trovi come funziona, come avviarlo (anche solo dal browser) e come adattarlo alla tua attività.
+
+```bash
+npm install && npm run motore   # in un terminale: orecchie e voce
+npm start                       # in un altro: poi apri http://localhost:5050
+```
 
 ---
 

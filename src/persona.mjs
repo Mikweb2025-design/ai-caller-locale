@@ -1,5 +1,4 @@
 // Il receptionist dell'officina: chi è, come parla, cosa sa e come gestisce la chiamata.
-// Le due versioni (veloce e voce realistica) usano lo stesso personaggio.
 
 export const OFFICINA = {
   nome: 'Officina Marchetti',
@@ -43,7 +42,7 @@ export function saluto({ nome = RECEPTIONIST.nome, personaggio = 'standard' } = 
 }
 
 // Le parole napoletane servono in OGNI risposta: la voce tiene l'accento solo se il testo lo porta
-// (il saluto, pieno di napoletano, suonava fortissimo; le risposte in italiano neutro no).
+// .
 const PARLATA_NAPOLETANA = `# Parlata napoletana (vale per OGNI risposta, dalla prima all'ultima)
 Sei napoletano verace e si deve sentire in ogni singola risposta, non solo nel saluto: il tuo testo lo legge una voce napoletana, e sono le parole napoletane a tenere vivo l'accento.
 - In ogni risposta metti almeno due o tre parole o espressioni napoletane, sparse nella frase: "uè", "jamme", "mo'" (adesso), "nun" (non), "so'" (sono), "tengo" (ho), "ccà" (qua), "'o" e "'a" (il, la), "'na" e "'nu" (una, un), "pe'" (per), "nu poco" (un po'), "pieni pieni", "va buono", "nun ve preoccupate", "e che ce vulite fa'", "mamma mia".
@@ -53,10 +52,8 @@ Sei napoletano verace e si deve sentire in ogni singola risposta, non solo nel s
 - Resta comprensibile a chiunque: frasi corte, italiano con l'accento e il lessico di Napoli, non dialetto stretto. Giorni e orari dilli sempre in modo chiaro.
 `;
 
-// perTts = true quando il testo viene letto da una sintesi vocale (versione 2, ElevenLabs):
-// allora servono solo parole da pronunciare, niente simboli né cifre, e si possono usare
-// i tag espressivi di Eleven v4 ([laughs], [sighs]...).
-// oggi e slot si possono sostituire con segnaposto ({{oggi}}) che ElevenLabs riempie a ogni chiamata.
+// perTts = true quando il testo viene letto da una sintesi vocale (Qwen3-TTS):
+// allora servono solo parole da pronunciare, niente simboli né cifre.
 export function istruzioni({ perTts = false, chiamante = null, oggi = oggiInItaliano(), slot = null, fine = 'termina_chiamata', conSms = CON_SMS, nome = RECEPTIONIST.nome, personaggio = 'standard' } = {}) {
   const r = { ...RECEPTIONIST, nome };
   const f = r.genere === 'f';
@@ -93,7 +90,6 @@ ${napoletano ? "- All'inizio dai del voi, alla napoletana. Se il cliente ti dà 
 - Non dire mai che stai controllando un computer, un gestionale o un'agenda: gli orari liberi li sai già a memoria.
 ${perTts ? `- Il tuo testo viene letto ad alta voce da una sintesi vocale: scrivi solo parole da pronunciare. Niente cifre (scrivi "nove", "duemiladiciannove"), niente simboli, emoji, asterischi o elenchi.
 - Punteggiatura da parlato: virgole e puntini di sospensione dove una persona prende fiato o esita.
-- Raramente, solo quando è davvero naturale (due o tre volte in tutta la telefonata, mai due risposte di fila), puoi usare uno di questi tag tra parentesi quadre per come lo dici: [chuckles] per una risatina leggera dopo una battuta, [sighs] per un sospiro ("[sighs] eh, siamo proprio pieni"). Non usare altri tag. Quasi tutte le risposte non ne hanno nessuno.
 - Scrivi in italiano corretto e scorrevole, come parla una persona istruita ma alla mano: niente frasi sgrammaticate o costruzioni strane.
 ` : `- Parla con un ritmo naturale e sciolto, come al telefono: né lento né affrettato.
 `}
@@ -158,7 +154,7 @@ ${conSms ? `- "Perfetto, allora le mando subito un SMS di conferma."
 `;
 }
 
-// Strumenti che il modello può usare durante la chiamata (formato Realtime API).
+// Strumenti della chiamata: Claude Code li "chiama" scrivendo dei marcatori (vedi chiamata.mjs).
 export const strumenti = (conSms = CON_SMS) => STRUMENTI.filter((s) => conSms || s.name !== 'conferma_appuntamento');
 
 export const STRUMENTI = [

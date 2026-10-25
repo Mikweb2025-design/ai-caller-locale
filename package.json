@@ -1,14 +1,14 @@
 {
-  "name": "ai-caller-officina",
+  "name": "ai-caller-locale",
   "version": "1.0.0",
   "private": true,
-  "description": "Receptionist AI al telefono: risponde, prende appuntamenti e parla italiano come una persona. Versione 1 velocissima (OpenAI Realtime) e versione 2 con voce italiana realistica (ElevenLabs + Claude).",
+  "description": "Receptionist AI al telefono e dal browser, tutto in locale: faster-whisper per ascoltare, Claude Code come cervello, Qwen3-TTS (MLX) per la voce.",
   "type": "module",
   "scripts": {
+    "motore": "python3 motore/motore.py",
     "start": "node src/server.mjs",
-    "prepara-agente-v2": "node src/prepara-agente-v2.mjs",
-    "prova:v1": "node prove/finto-twilio.mjs \"http://127.0.0.1:5050/twilio/locale/voce?v=1\" prova-v1",
-    "prova:v2": "node prove/finto-elevenlabs.mjs prova-v2"
+    "prova": "prove/esegui.sh prova base",
+    "genera-cliente": "node prove/genera-cliente.mjs"
   },
   "dependencies": {
     "ws": "^8.18.3"

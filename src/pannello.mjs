@@ -1,11 +1,7 @@
 // Pannello di controllo: una pagina sola, da aprire sul telefono prima di girare il video.
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
-export function paginaPannello({ versioneAttiva, messaggio = '', twilio, v2Pronta, numero }) {
-  const bottone = (v, titolo, sotto, attivo, disabilitato) => `
-    <button name="versione" value="${v}" class="${attivo ? 'attivo' : ''}" ${disabilitato ? 'disabled' : ''}>
-      <strong>${titolo}</strong><span>${sotto}</span>
-    </button>`;
+export function paginaPannello({ messaggio = '', twilio, numero, web }) {
   return `<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Centralino officina</title>
@@ -32,22 +28,15 @@ export function paginaPannello({ versioneAttiva, messaggio = '', twilio, v2Pront
 </style></head>
 <body><main>
   <h1>Centralino Officina Marchetti</h1>
-  <p class="tenue">Il receptionist AI per il video.</p>
+  <p class="tenue">Receptionist AI tutto locale: faster-whisper, Claude Code, Qwen3-TTS.</p>
   ${messaggio ? `<div class="msg">${esc(messaggio)}</div>` : ''}
   <div>Numero da chiamare:</div>
   <div class="numero">${esc(numero || 'numero non impostato')}</div>
-  <form method="post"><div class="scelta">
-    ${bottone('1', 'Versione 1: la più veloce', 'OpenAI Realtime, risposta quasi istantanea', versioneAttiva === '1', false)}
-    ${bottone('2', 'Versione 2: la voce più realistica', v2Pronta ? 'ElevenLabs, voce italiana madrelingua' : 'Non ancora pronta: manca la chiave ElevenLabs', versioneAttiva === '2', !v2Pronta)}
-  </div></form>
+  <p><a href="${esc(web)}">🎧 Prova dal browser (microfono e chat)</a></p>
   <h2>Fatti chiamare dal receptionist</h2>
   ${twilio ? `<form method="post">
     <label for="chiama">Il tuo numero</label>
     <input id="chiama" name="chiama" type="tel" placeholder="+39 3xx xxx xxxx" required>
-    <select name="versioneChiamata">
-      <option value="1" ${versioneAttiva === '1' ? 'selected' : ''}>Versione 1 (veloce)</option>
-      <option value="2" ${versioneAttiva === '2' ? 'selected' : ''} ${v2Pronta ? '' : 'disabled'}>Versione 2 (realistica)</option>
-    </select>
     <button><strong>Chiamami ora</strong><span>Il receptionist ti chiama e parla per primo</span></button>
   </form>` : '<p class="tenue">Per farti chiamare serve la chiave API Twilio nel file .env del server.</p>'}
 </main></body></html>`;

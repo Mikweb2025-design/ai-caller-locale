@@ -8,8 +8,9 @@ const cartellaLog = join(RADICE, 'registrazioni');
 mkdirSync(cartellaLog, { recursive: true });
 
 export class ChiamataTwilio {
-  constructor(ws, versione) {
+  constructor(ws, versione, { web = false } = {}) {
     this.ws = ws;
+    this.web = web; // chiamata dal browser: riceve anche la trascrizione e può scrivere
     this.versione = versione;
     this.streamSid = null;
     this.callSid = null;
@@ -35,8 +36,8 @@ export class ChiamataTwilio {
           this.callSid = m.start.callSid;
           this.parametri = m.start.customParameters || {};
           this.chiamante = this.parametri.from || null;
-          this.file = join(cartellaLog, `${new Date().toISOString().replace(/[:.]/g, '-')}-v${versione}.log`);
-          this.log('📞 chiamata', { callSid: this.callSid, da: this.chiamante, a: this.parametri.to });
+          this.file = join(cartellaLog, `${new Date().toISOString().replace(/[:.]/g, '-')}-${versione}.log`);
+          this.log('📞 chiamata', { callSid: this.callSid, da: this.chiamante, a: this.parametri.to, web: this.web });
           this.alPartire?.();
           break;
         case 'media':
@@ -49,6 +50,9 @@ export class ChiamataTwilio {
           this.allaMarca?.(m.mark.name);
           break;
         }
+        case 'testo': // solo dal browser: frase scritta in chat
+          if (this.web) this.alTestoScritto?.(String(m.testo || '').slice(0, 500));
+          break;
         case 'stop':
           this.log('📴 Twilio ha chiuso lo stream');
           break;
@@ -56,6 +60,11 @@ export class ChiamataTwilio {
     });
     ws.on('close', () => { this.chiusa = true; this.log('fine chiamata'); this.allaFine?.(); });
     ws.on('error', (e) => this.log('errore websocket Twilio', e.message));
+  }
+
+  // trascrizione per la pagina web (Twilio non la riceve)
+  testo(chi, testo) {
+    if (this.web && !this.chiusa) this.ws.send(JSON.stringify({ event: 'testo', chi, testo }));
   }
 
   get sta_parlando() { return this.marche.length > 0; }
@@ -93,7 +102,7 @@ export class ChiamataTwilio {
 
   log(...a) {
     const riga = `[${((Date.now() - this.t0) / 1000).toFixed(2)}s] ` + a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
-    console.log(`v${this.versione} ${riga}`);
+    console.log(`[${this.versione}] ${riga}`);
     if (this.file) appendFileSync(this.file, riga + '\n');
   }
 }

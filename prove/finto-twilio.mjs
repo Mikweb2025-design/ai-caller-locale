@@ -34,7 +34,7 @@ if (url.startsWith('http')) {
   for (const [, nome, valore] of twiml.matchAll(/<Parameter name="([^"]+)" value="([^"]*)"/g)) parametri[nome] = valore;
   const u = new URL(url);
   // lo stream verso il nostro server passa in locale; quello verso ElevenLabs (versione 2) va diretto
-  url = new URL(stream).hostname.endsWith('elevenlabs.io') ? stream : stream.replace(/^wss:\/\/[^/]+/, `ws://${u.host}`);
+  url = new URL(stream).hostname.endsWith('__nessuno__') ? stream : stream.replace(/^wss:\/\/[^/]+/, `ws://${u.host}`);
   console.log(`webhook in ${Date.now() - t} ms → ${url}`);
   // Twilio apre lo stream circa 300 ms dopo aver ricevuto il TwiML
   await new Promise((r) => setTimeout(r, 300));
@@ -42,7 +42,7 @@ if (url.startsWith('http')) {
 const FRAME = 160; // 20 ms di μ-law a 8 kHz
 const SILENZIO = 0xff;
 const PAUSA_UMANA_MS = 350; // quanto aspetta il cliente prima di rispondere
-const FINE_TURNO_MS = 1100; // silenzio del receptionist dopo il quale il cliente parla (copre la pausa durante l'invio dell'SMS)
+const FINE_TURNO_MS = 1800; // silenzio del receptionist dopo il quale il cliente parla (copre la pausa durante l'invio dell'SMS)
 
 const battute = COPIONE.map((_, i) => readFileSync(join(qui, 'audio-cliente', nomeCopione, `${i + 1}.ulaw`)));
 const streamSid = 'MZ' + Math.random().toString(16).slice(2).padEnd(32, '0');

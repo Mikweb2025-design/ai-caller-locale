@@ -1,55 +1,65 @@
 # Guida tecnica
 
-Come funziona il receptionist AI, come installarlo con il tuo numero e come adattarlo. Il README racconta cosa fa; qui c'è il come.
+Come funziona il receptionist AI locale, come avviarlo e come adattarlo. Il README racconta cosa fa; qui c'è il come.
 
 ## Come funziona
 
-**Versione 1, la più veloce: OpenAI Realtime.**
-- Il numero Twilio chiama il webhook di questo server, che risponde con un `<Connect><Stream>`. L'audio della telefonata (G.711 μ-law, 8 kHz) passa via WebSocket dal server al modello realtime di OpenAI, che ascolta e risponde a voce senza conversioni.
-- Mentre il telefono squilla, il server apre già la sessione con OpenAI e genera il saluto, così parte appena la chiamata viene presa.
-- Fine frase: `server_vad` con 350 ms di silenzio.
-- Se il cliente parla sopra al receptionist, il server svuota l'audio di Twilio (`clear`) e taglia la risposta nel punto in cui il cliente l'ha sentita (`conversation.item.truncate`).
+```
+telefono (Twilio)  ─┐                         ┌─ motore/motore.py (Python, MLX)
+                    ├─ μ-law 8 kHz ─ server ──┤   /stt  Parakeet v3 (o faster-whisper)
+browser (web.mjs)  ─┘   Media Streams   │     └─  /tts  Qwen3-TTS, in streaming
+                                        └──── claude -p (stream-json): il cervello
+```
 
-**Versione 2, la più umana: ElevenLabs Agents.**
-- Quando arriva la chiamata, il server chiede a ElevenLabs di registrarla (`register-call`) e passa a Twilio il TwiML che riceve. Da lì Twilio parla direttamente con l'agente ElevenLabs: il nostro server non sta nel percorso dell'audio.
-- L'agente usa Claude Haiku 5.5 per il testo, Eleven v4 Turbo per la voce (in modalità espressiva) e il modello di turni `turn_v3`, con prontezza `eager` e generazione anticipata.
-- Se la risposta tarda più di 1,8 s, dice un "Mmh, allora…".
-
-**Pannello.** `URL_PUBBLICO/pannello/<SEGRETO>` sceglie quale versione risponde. Con la chiave API Twilio fa anche partire una chiamata verso il tuo telefono.
+- **Un solo protocollo.** Twilio e la pagina web parlano lo stesso protocollo Media Streams (μ-law 8 kHz, `mark`, `clear`), quindi passano per la stessa pipeline in `src/chiamata.mjs`. La pagina web in più riceve la trascrizione e può scrivere al receptionist come in una chat.
+- **Fine frase.** VAD a energia sul server: `VAD_SILENZIO_MS` (750 ms) di silenzio chiudono la frase, che va al motore per la trascrizione.
+- **Cervello.** Per ogni chiamata parte un processo `claude -p --input-format stream-json --output-format stream-json --include-partial-messages`, senza strumenti, senza MCP e senza impostazioni del progetto, con le istruzioni di `persona.mjs` come system prompt e `MAX_THINKING_TOKENS=0`. Per le telefonate Twilio parte mentre il telefono squilla.
+- **Azioni.** Claude non ha strumenti: per registrare l'appuntamento e riagganciare scrive i marcatori `<<CONFERMA|nome|ora|auto>>` e `<<FINE>>`, che il server esegue e non fa sentire.
+- **Voce.** Il testo di Claude arriva token per token; appena c'è una frase intera (almeno 20 caratteri) va a Qwen3-TTS, che restituisce l'audio a pezzi mentre lo genera. Saluto e riempitivo ("Mmh, allora...") sono pronti in memoria dall'avvio.
+- **Interruzioni.** Se il cliente parla sopra al receptionist, il server svuota l'audio (`clear`), interrompe la sintesi e ignora il resto della risposta.
+- **Motore.** La trascrizione gira in un processo separato, così non aspetta mai che la voce finisca di generare.
 
 ```
 src/
-  server.mjs              webhook Twilio, pannello, WebSocket della versione 1
-  v1-realtime.mjs         ponte Twilio ↔ OpenAI Realtime
-  v2-elevenlabs.mjs       register-call verso ElevenLabs
-  prepara-agente-v2.mjs   crea o aggiorna l'agente ElevenLabs
-  persona.mjs             chi è il receptionist, come parla, cosa sa, come va la chiamata
-  strumenti.mjs           SMS di conferma, chiamate in uscita (Twilio)
-  twilio-stream.mjs       lato Twilio della chiamata: audio, interruzioni, riaggancio
-  pannello.mjs            pagina del pannello
-prove/                    chiamate simulate, misure dei ritardi, campioni delle voci
-demo/                     due telefonate dimostrative
+  server.mjs         webhook Twilio, pagina web, pannello, WebSocket
+  chiamata.mjs       la pipeline: VAD → trascrizione → Claude Code → voce, interruzioni, azioni
+  cervello.mjs       il processo Claude Code in streaming
+  voce.mjs           client del motore vocale, codifica μ-law
+  web.mjs            pagina per chiamare dal browser (microfono + chat)
+  persona.mjs        chi è il receptionist, come parla, cosa sa, come va la chiamata
+  strumenti.mjs      registrazione dell'appuntamento, SMS, chiamate in uscita (Twilio)
+  twilio-stream.mjs  lato Twilio della chiamata: audio, marche, riaggancio
+  pannello.mjs       pagina del pannello
+motore/motore.py     orecchie e voce, tutto in locale
+prove/               chiamate simulate e misure dei ritardi
 ```
 
 ## Cosa serve
 
-- Node.js 20.12 o più recente (consigliato il 22).
-- Un account Twilio **non in prova** (in prova Twilio legge un avviso all'inizio di ogni chiamata) con un numero di telefono.
-- Per la versione 1, una chiave API OpenAI con accesso ai modelli realtime.
-- Per la versione 2, un account ElevenLabs a pagamento. Il piano gratuito non permette di usare via API le voci della libreria, che comprendono tutte quelle italiane madrelingua, e consente solo un uso non commerciale.
-- Un indirizzo HTTPS pubblico che porti al server: una VPS con reverse proxy, oppure Cloudflare Tunnel.
+- Un Mac con Apple Silicon (MLX). Con 16 GB di RAM va bene.
+- Node.js 20.12 o più recente.
+- Python 3.11+ con `pip install -r motore/requirements.txt`. Al primo avvio scarica i modelli da Hugging Face (~1,5 GB).
+- Claude Code installato e con accesso fatto (`claude` nel terminale).
+- Facoltativo, per il numero vero: un account Twilio e un indirizzo HTTPS pubblico (Cloudflare Tunnel va benissimo).
 
-## Installazione
+## Avvio
 
 1. `npm install`
-2. Copia `.env.example` in `.env` e riempilo. `SEGRETO` è una stringa casuale lunga: compare nell'indirizzo del webhook e del pannello.
-3. Rendi il server raggiungibile da internet e metti l'indirizzo in `URL_PUBBLICO`. Per provare basta `cloudflared tunnel --url http://localhost:5050`, che però cambia indirizzo a ogni avvio.
-4. `npm start`
-5. Su Twilio vai in **Phone Numbers → il tuo numero → Voice configuration → A call comes in** e imposta Webhook `URL_PUBBLICO/twilio/<SEGRETO>/voce`, metodo **HTTP POST**.
-6. Per la versione 2:
-   1. Scegli una voce italiana nella Voice Library di ElevenLabs e metti il suo `voice_id` in `V2_VOCE` (i campioni in qualità telefono si fanno con `node prove/campioni-v2.mjs`).
-   2. Lancia `node src/prepara-agente-v2.mjs`: crea l'agente e salva gli id in `agente-v2.json`. Rilancialo ogni volta che cambi la persona o le impostazioni della versione 2.
-7. Apri il pannello, scegli la versione e chiama il numero.
+2. `cp .env.example .env` (i valori predefiniti vanno già bene per provare in locale).
+3. `npm run motore` e aspetta "Motore vocale pronto".
+4. In un altro terminale `npm start` e apri **http://localhost:5050**: premi Chiama e parla (meglio con le cuffie), oppure scrivi in chat.
+
+### Con il numero Twilio
+
+1. Metti `SEGRETO` (una stringa casuale lunga) e `URL_PUBBLICO` nel `.env`. Per provare: `cloudflared tunnel --url http://localhost:5050`.
+2. Su Twilio, **Phone Numbers → il tuo numero → A call comes in**: Webhook `URL_PUBBLICO/twilio/<SEGRETO>/voce`, **HTTP POST**.
+3. La pagina web diventa `URL_PUBBLICO/web/<SEGRETO>` e il pannello `URL_PUBBLICO/pannello/<SEGRETO>`.
+
+## La voce
+
+- `TTS_VOCE` sceglie uno speaker di Qwen3-TTS (`ryan` è il predefinito; `serena` e `vivian` per una voce femminile). Gli speaker non sono italiani madrelingua: si capiscono benissimo, ma con un filo di accento.
+- Per un italiano madrelingua clona una voce: `TTS_MODELLO=mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit`, `TTS_RIF_AUDIO` = un wav a 24 kHz di 5–15 secondi, `TTS_RIF_TESTO` = cosa si dice. Usa solo voci di cui hai il consenso.
+- I modelli 1.7B suonano meglio ma sono più lenti.
 
 ## Adattarlo alla tua attività
 
@@ -57,51 +67,28 @@ Tutto il personaggio è in `src/persona.mjs`:
 - `OFFICINA`: nome, indirizzo, orari;
 - `RECEPTIONIST`: nome e genere, presi dal `.env`;
 - `martediProssimo()`: il giorno con i posti liberi;
-- `istruzioni()`: tono, flusso della chiamata, cosa non deve mai dire o promettere;
+- `istruzioni()`: tono, flusso della chiamata, cosa non deve mai dire o promettere (c'è anche il personaggio `napoletano`);
 - `saluto()`: la prima frase.
 
-Le istruzioni sono scritte in italiano parlato apposta: esempi sciolti e regole chiare funzionano meglio di frasi da copiare.
-
-Dopo una modifica riavvia il server (versione 1) e rilancia `prepara-agente-v2.mjs` (versione 2).
-
-### Un personaggio con carattere: il napoletano verace
-
-Con `V2_PERSONAGGIO=napoletano` e `V2_NOME=Gennaro` la versione 2 diventa un napoletano di quelli veri:
-- saluta con «Uè, buongiorno! Officina Marchetti, so' Gennaro, mi dica»;
-- dà del voi;
-- mette due o tre parole napoletane in ogni risposta, fino al «Stateve buono!» finale.
-
-Vale per ogni risposta perché è il testo a tenere vivo l'accento: con Eleven v4 Turbo una voce napoletana che legge italiano neutro conserva il timbro, ma l'accento si attenua.
-
-La voce adatta di solito non c'è nella libreria (le voci napoletane sono poche e leggere): si crea con Voice Design.
-- `node prove/disegna-voce.mjs <nome> "<descrizione in inglese>"` crea tre proposte da una descrizione, per esempio un meccanico sessantenne della periferia di Napoli con la voce da fumatore. Le salva tra le voci dell'account e le fa parlare con v4 Turbo in qualità telefono.
-- `node prove/campioni-napoletani.mjs` fa dire alle voci la scena con la parlata napoletana.
-- `node prove/confronto-accento.mjs` mette a confronto v4 Turbo e `eleven_v3_conversational` sulla voce in `V2_VOCE`.
+Dopo una modifica riavvia il server.
 
 ## Prove senza telefono
 
 | Comando | Cosa fa |
 |---|---|
-| `node prove/genera-cliente.mjs` | crea la voce del cliente di prova per i quattro copioni (`base`, `scorbutico`, `disordine`, `improvvisato`) |
-| `prove/esegui.sh <nome> 1 base` | telefonata simulata alla versione 1 in locale: ritardo di ogni risposta e registrazione in `prove/out/<nome>.mp3` |
-| `prove/esegui.sh <nome> 2 base` | la versione 2 con lo stesso percorso di Twilio (webhook, register-call, stream verso ElevenLabs) |
-| `node prove/finto-elevenlabs.mjs <nome> improvvisato` | parla direttamente con l'agente della versione 2 |
-| `node prove/metriche.mjs` | tempi turno per turno dell'ultima conversazione: attesa di fine frase, modello di testo, voce |
-| `node prove/ttfa.mjs` | velocità dei modelli realtime di OpenAI a confronto |
+| `npm run genera-cliente` | crea la voce del cliente di prova (speaker `aiden`) per i copioni `base`, `scorbutico`, `disordine`, `improvvisato` |
+| `prove/esegui.sh <nome> [copione]` | telefonata simulata con lo stesso percorso di Twilio: ritardo di ogni risposta e registrazione in `prove/out/<nome>.mp3` |
 
-## Cosa abbiamo misurato
+## Cosa abbiamo misurato (MacBook Apple Silicon, 16 GB)
 
-**Versione 1.**
-- Tempo prima del primo audio: `gpt-realtime` ~0,45–0,6 s, `gpt-realtime-1.5` ~0,6 s, `gpt-realtime-2.1` ~0,8 s.
-- `semantic_vad` aspetta che la frase sia "finita" e aggiunge ~0,5 s rispetto a `server_vad`.
-- `gpt-realtime` a volte chiude la chiamata senza salutare: il server se ne accorge, gli fa dire il saluto e riattacca dopo.
-
-**Versione 2.** Su ogni turno l'attesa di fine frase vale ~0,25 s, la prima frase del modello di testo ~0,4 s e la voce ~0,075 s.
-- Claude Haiku 5.5 sulle domande complicate può arrivare a 1–2,8 s.
-- Qwen (`qwen36-35b-a3b`, ospitato da ElevenLabs) resta sotto 0,35 s ma parla in modo più rigido. Si cambia con `V2_LLM`.
+- Trascrizione: Parakeet v3 ~0,1–0,2 s a frase; faster-whisper `small` su CPU ~1,1 s.
+- Claude Code (Haiku, senza ragionamento): primo testo ~0,9–1,7 s.
+- Qwen3-TTS 0.6B 8 bit: primo audio ~0,2 s, circa tre volte più veloce del tempo reale.
+- Dalla fine della frase del cliente al primo audio: ~1,3–2,2 s.
+- Qwen3-TTS 0.6B ogni tanto sbaglia sui frammenti di due o tre parole o non si ferma più: per questo le frasi si mandano intere e l'audio ha un tetto di lunghezza.
 
 ## Note
 
 - **Trasparenza.** Il receptionist ammette sempre di essere un'AI se glielo chiedono. Nell'Unione Europea l'AI Act chiede di dirlo subito a chi chiama: per un uso reale aggiungilo al saluto.
-- **Privacy.** In `registrazioni/` finiscono i numeri di chi chiama e il testo delle telefonate, quindi vanno trattati secondo il GDPR.
-- **Crediti.** L'idea e il flusso della chiamata vengono da [jasonc00person/bland-ai-receptionist](https://github.com/jasonc00person/bland-ai-receptionist), che usa Bland AI. Questo progetto è riscritto da zero per Twilio, OpenAI ed ElevenLabs, in italiano.
+- **Privacy.** In `registrazioni/` finiscono i numeri di chi chiama e il testo delle telefonate, quindi vanno trattati secondo il GDPR. L'audio non lascia il Mac; il testo delle frasi passa da Claude Code.
+- **Crediti.** Basato su [Henry12034/ai-caller-cosmio](https://github.com/Henry12034/ai-caller-cosmio) di Cosmio (OpenAI Realtime ed ElevenLabs), a sua volta ispirato da [jasonc00person/bland-ai-receptionist](https://github.com/jasonc00person/bland-ai-receptionist).

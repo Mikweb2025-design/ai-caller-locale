@@ -40,7 +40,7 @@ async function inviaSms(a, testo) {
   if (!r.ok) throw new Error(`Twilio ${r.status}: ${(await r.text()).slice(0, 300)}`);
 }
 
-export async function chiamaNumero(a, versione) {
+export async function chiamaNumero(a) {
   const { accountSid, apiKey, apiSecret, numero } = CONFIG.twilio;
   const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`, {
     method: 'POST',
@@ -48,7 +48,7 @@ export async function chiamaNumero(a, versione) {
       Authorization: 'Basic ' + Buffer.from(`${apiKey}:${apiSecret}`).toString('base64'),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ From: numero, To: a, Url: `${CONFIG.urlPubblico}/twilio/${process.env.SEGRETO}/voce?v=${versione}&uscita=1` }),
+    body: new URLSearchParams({ From: numero, To: a, Url: `${CONFIG.urlPubblico}/twilio/${process.env.SEGRETO}/voce?uscita=1` }),
   });
   const j = await r.json();
   if (!r.ok) throw new Error(`Twilio ${r.status}: ${j.message}`);

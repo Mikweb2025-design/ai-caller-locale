@@ -1,0 +1,6 @@
+# Motore vocale locale (Apple Silicon, Python 3.11+)
+mlx-audio>=0.4
+faster-whisper>=1.1   # solo se usi STT_MODELLO di tipo Whisper
+numpy
+scipy
+soundfile
