@@ -135,6 +135,17 @@ def ascolta(pcm8k):
     return risposte.get()
 
 
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # Node chiude le connessioni inattive o interrompe una frase: è normale, niente traceback
+        import sys
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
+
 class Gestore(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
@@ -192,4 +203,4 @@ if __name__ == '__main__':
         pass
     ascolta(np.zeros(8000, dtype='<i2').tobytes())
     print(f'Motore vocale pronto su http://127.0.0.1:{PORTA}', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', PORTA), Gestore).serve_forever()
+    Server(('127.0.0.1', PORTA), Gestore).serve_forever()
