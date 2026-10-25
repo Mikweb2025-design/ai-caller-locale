@@ -420,7 +420,7 @@ What has **not** been tested yet:
 
 Known limits:
 
-- <!-- TODO-DE-STATUS -->
+- **German and tone adaptation.** German was tested through chat and simulated calls: a caller who speaks German throughout, German switching to Italian and back, an English caller (the receptionist apologises in Italian and German and offers a callback), and German disabled (it stays in Italian and says so). Dates, times and e-mail addresses come out spelled in words in the right language, and the `<<CONFIRM…>>` details stay in Italian. The voice is the same cloned Italian-sounding speaker speaking German, so an accent is audible; it has not been tried with real German-speaking callers. The 11 customer-type scenarios in `prove/matrice-tono.mjs` were judged by reading the dialogues, not scored automatically. Haiku at low effort follows the tone rules only partly: it can occasionally get a relative date wrong ("tomorrow" on a Sunday) or slip an English word into Italian. There is no action for callbacks yet: when the receptionist says "a colleague will call you back" nothing is recorded.
 - **Short fragments.** Qwen3-TTS 0.6B can make mistakes on sentences of two or three words, so sentences are sent whole; the audio length is also capped.
 - **One call at a time for the voice engine.** The engine handles one synthesis at a time (MLX works on one piece at a time), so concurrent calls would queue.
 - **The voice is not a perfect native speaker.** It is good and consistent, but a careful Italian ear can tell it is synthetic.

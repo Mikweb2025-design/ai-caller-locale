@@ -420,7 +420,7 @@ Cosa **non** è stato ancora provato:
 
 Limiti noti:
 
-- <!-- TODO-DE-STATUS -->
+- **Tedesco e adattamento del tono.** Il tedesco è stato provato in chat e con telefonate simulate: cliente che parla tedesco per tutta la chiamata, tedesco che passa all'italiano e viceversa, cliente in inglese (il receptionist si scusa in italiano e in tedesco e offre il richiamo) e tedesco disattivato (resta in italiano e lo dice). Date, orari ed email escono in lettere nella lingua giusta e i dettagli del marcatore `<<CONFERMA…>>` restano in italiano. La voce è la stessa voce clonata, con suono italiano, che parla tedesco: si sente l'accento, e non è mai stata provata con veri clienti di lingua tedesca. I 11 scenari di `prove/matrice-tono.mjs` sono stati giudicati leggendo i dialoghi, non con un punteggio automatico. Haiku con impegno basso segue le regole sul tono solo in parte: ogni tanto sbaglia una data relativa ("domani" di domenica) o infila una parola inglese in italiano. Non c'è ancora un'azione per i richiami: quando il receptionist dice "la richiama un collega" non viene registrato niente.
 - **Frammenti brevi.** Qwen3-TTS 0.6B può sbagliare sulle frasi di due o tre parole, quindi le frasi si mandano intere; anche la lunghezza dell'audio ha un tetto.
 - **Una chiamata alla volta per il motore vocale.** Il motore gestisce una sintesi alla volta (MLX lavora un pezzo alla volta), quindi le chiamate contemporanee si metterebbero in coda.
 - **La voce non è un madrelingua perfetto.** È buona e coerente, ma un orecchio italiano attento capisce che è sintetica.
