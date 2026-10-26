@@ -54,7 +54,7 @@ test('al telefono il saluto parte con un breve silenzio: la prima parola non si 
   assert.ok(attesa, 'deve aspettare che la linea sia aperta');
   assert.equal(chiamata._inviati.length, 2, 'silenzio + saluto');
   const primo = Buffer.from(chiamata._inviati[0].base64, 'base64');
-  assert.equal(primo.length, 400 * 8, 'silenzio iniziale di 400 ms');
+  assert.equal(primo.length, 800 * 8, 'silenzio iniziale di 800 ms');
   assert.ok(primo.every((b) => b === 0xff), 'il silenzio μ-law è 0xFF');
   assert.deepEqual(Buffer.from(chiamata._inviati[1].base64, 'base64'), AUDIO);
 });

@@ -17,7 +17,7 @@ import { creaRumoreAttesa, fermaAttesaPrimaDellaVoce } from './attesa.mjs';
 const FRAME_MS = 20;
 // Al telefono i primi istanti della chiamata si perdono: un breve silenzio in testa al
 // saluto fa perdere quello, non la prima parola ("Lasercamp" che diventava "camp").
-const SILENZIO_AVVIO_MS = 400;
+const SILENZIO_AVVIO_MS = 800;
 const silenzioAvvio = () => Buffer.alloc(SILENZIO_AVVIO_MS * 8, 0xff);
 export const RIEMPITIVO = 'Sì, un attimo.';
 
