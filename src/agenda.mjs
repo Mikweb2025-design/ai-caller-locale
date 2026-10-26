@@ -254,7 +254,11 @@ export async function aggiornaRichiamo(id, { nome = '', motivo = '', telefono = 
   if (nome.trim() && nome.trim() !== 'non detto') r.nome = nome.trim();
   if (motivo.trim()) r.motivo = motivo.trim();
   const tel = String(telefono || '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
-  if (tel.length >= 6) r.telefono = tel;
+  if (tel.length >= 6) {
+    r.telefono = tel;
+    // il task su calendario va aggiornato col nuovo numero, ma senza rallentare la chiamata
+    sincronizzaTask(r).catch(() => {});
+  }
   salva(lista);
   return r;
 }

@@ -23,6 +23,16 @@ server.stdout.on('data', (d) => { uscitaServer += d; });
 server.stderr.on('data', (d) => { uscitaServer += d; });
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// La data va scelta al volo: un test con una data fissa si rompe da solo il giorno dopo.
+const GIORNI = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
+const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+const NUMERI = ['zero', 'uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 'otto', 'nove', 'dieci', 'undici', 'dodici', 'tredici', 'quattordici', 'quindici', 'sedici', 'diciassette', 'diciotto', 'diciannove', 'venti', 'ventuno', 'ventidue', 'ventitré', 'ventiquattro', 'venticinque', 'ventisei', 'ventisette', 'ventotto', 'ventinove', 'trenta', 'trentuno'];
+const futuro = new Date();
+futuro.setDate(futuro.getDate() + 3); // margine oltre il preavviso minimo
+while (futuro.getDay() === 0 || futuro.getDay() === 6) futuro.setDate(futuro.getDate() + 1);
+const isoAtteso = `${futuro.getFullYear()}-${String(futuro.getMonth() + 1).padStart(2, '0')}-${String(futuro.getDate()).padStart(2, '0')}`;
+const fraseData = `${GIORNI[futuro.getDay()]} ${NUMERI[futuro.getDate()]} ${MESI[futuro.getMonth()]}`;
+
 try {
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(`http://127.0.0.1:${porta}/salute`)).ok) break; } catch {}
@@ -30,7 +40,7 @@ try {
     if (i === 99) throw new Error(`server di prova non partito:\n${uscitaServer}`);
   }
   const chat = spawn('node', ['prove/chat-prova.mjs',
-    'Vorrei fissare un appuntamento per lunedì ventisei ottobre alle quattordici. Mi chiamo Mario Prova e vorrei una consulenza.',
+    `Vorrei fissare un appuntamento per ${fraseData} alle quindici. Mi chiamo Mario Prova e vorrei una consulenza.`,
     'mario punto prova chiocciola esempio punto it',
     'Okay, ciao.'
   ], { cwd: radice, env: { ...ambiente, WS_BASE: `ws://127.0.0.1:${porta}`, DURATA_MS: '60000' }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -43,8 +53,8 @@ try {
   assert.equal(lista.length, 1, `${uscitaChat}\n${uscitaServer}`);
   assert.equal(lista[0].nome, 'Mario Prova');
   assert.equal(lista[0].email, 'mario.prova@esempio.it');
-  assert.equal(lista[0].giorno, '2026-10-26');
-  assert.equal(lista[0].ora, '14:00');
+  assert.equal(lista[0].giorno, isoAtteso);
+  assert.equal(lista[0].ora, '15:00');
   console.log('prenotazione browser salvata con email: OK');
 } finally {
   server.kill('SIGTERM');

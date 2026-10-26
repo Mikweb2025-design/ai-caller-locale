@@ -471,11 +471,15 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     if (!richiamoId || telefonoRichiamo) return false;
     const numero = numeroDaVoce(detto);
     if (!numero) return false;
-    const esito = await aggiornaNumero(richiamoId, numero);
-    if (esito?.ok) {
-      telefonoRichiamo = numero;
-      chiamata.log('📞 numero dettato attaccato al richiamo');
-      return true;
+    try {
+      const esito = await aggiornaNumero(richiamoId, numero, chiamata);
+      if (esito?.ok) {
+        telefonoRichiamo = numero;
+        chiamata.log('📞 numero dettato attaccato al richiamo');
+        return true;
+      }
+    } catch (e) {
+      chiamata.log('⚠️ numero dettato non attaccato al richiamo:', e.message);
     }
     return false;
   }

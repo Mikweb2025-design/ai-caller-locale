@@ -17,18 +17,38 @@ try {
   const frase = 'Dopo il preventivo vieni anche tu a fare un aperitivo con me, eh?';
 
   salvaImpostazioni({ receptionist: { scherza: false, intercalare: '' } });
-  const professionale = await provaConversazione(impostazioni().cervello.principale, istruzioni(), { frasi: [frase] });
+
+  // Le opzioni admin devono arrivare nel prompt: verifica deterministica, senza modello.
+  const spente = istruzioni();
+  assert.match(spente, /“Scherza con il cliente” è DISATTIVATA/i);
+  assert.doesNotMatch(spente, /è ATTIVA/i);
+  assert.match(spente, /Niente intercalari/i);
+  assert.doesNotMatch(spente, /Il titolare ha scelto questi intercalari/i);
+
+  const professionale = await provaConversazione(impostazioni().cervello.principale, spente, { frasi: [frase] });
   assert.ok(!professionale.turni[0]?.errore, professionale.turni[0]?.errore);
   assert.doesNotMatch(professionale.turni[0].testo, /“Scherza con il cliente”|DISATTIVATA|ATTIVA/i);
   console.log(`[scherza spento]\n${professionale.turni[0].testo}\n`);
 
   salvaImpostazioni({ receptionist: { scherza: true, intercalare: 'dunque, controllo' } });
-  const umano = await provaConversazione(impostazioni().cervello.principale, istruzioni(), {
+
+  // Il modello è libero di variare le parole: qui verifichiamo che le opzioni salvate
+  // finiscano davvero nel prompt (veloce e stabile), non che le pronunci.
+  const attive = istruzioni();
+  assert.match(attive, /“Scherza con il cliente” è ATTIVA/i);
+  assert.doesNotMatch(attive, /è DISATTIVATA/i);
+  assert.match(attive, /Il titolare ha scelto questi intercalari/i);
+  assert.match(attive, /"dunque"/i);
+  assert.match(attive, /"controllo"/i);
+  assert.doesNotMatch(attive, /Niente intercalari/i);
+
+  const umano = await provaConversazione(impostazioni().cervello.principale, attive, {
     frasi: [frase, 'Va bene, intanto mi dice dove siete?'],
   });
   for (const turno of umano.turni) assert.ok(!turno.errore, turno.errore);
-  const risposte = umano.turni.map((x) => x.testo || '').join(' ');
-  assert.match(risposte, /\b(?:dunque|controllo)\b/i);
+  for (const turno of umano.turni) {
+    assert.doesNotMatch(turno.testo || '', /“Scherza con il cliente”|DISATTIVATA|ATTIVA|intercalar/i);
+  }
   console.log(`[scherza attivo, intercalari personalizzati]\n${umano.turni.map((x) => x.testo).join('\n')}\n`);
 } finally {
   rmSync(cartella, { recursive: true, force: true });

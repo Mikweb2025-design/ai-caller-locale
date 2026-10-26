@@ -71,13 +71,14 @@ export async function confermaAppuntamento({ nome, giorno, ora, dettagli, email 
 
 // Il numero del richiamo arriva anche dopo che il richiamo era già stato registrato: lo si attacca.
 export async function attaccaTelefonoRichiamo(id, telefono, chiamata) {
+  const log = chiamata?.log ? (m, d) => chiamata.log(m, d) : () => {};
   try {
     const r = await aggiornaRichiamo(id, { telefono });
-    if (!r) { chiamata.log('⚠️ richiamo da aggiornare non trovato'); return { ok: false }; }
-    chiamata.log('📞 numero attaccato al richiamo', { id });
+    if (!r) { log('⚠️ richiamo da aggiornare non trovato'); return { ok: false }; }
+    log('📞 numero attaccato al richiamo', { id });
     return { ok: true, richiamo: r };
   } catch (e) {
-    chiamata.log('⚠️ numero non attaccato al richiamo:', e.message);
+    log('⚠️ numero non attaccato al richiamo:', e.message);
     return { ok: false, errore: e.message };
   }
 }
