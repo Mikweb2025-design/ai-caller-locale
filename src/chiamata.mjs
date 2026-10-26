@@ -12,7 +12,7 @@ import { creaRegolatoreIntercalari } from './intercalari.mjs';
 import { impostazioni } from './impostazioni.mjs';
 import { estraiIntento, regoleCandidate } from './intenti.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta } from './voce.mjs';
-import { creaRumoreAttesa, fermaAttesaPrimaDellaVoce } from './attesa.mjs';
+import { creaRumoreAttesa, creaSuonoContinuo, fermaAttesaPrimaDellaVoce, mescolaSuono } from './attesa.mjs';
 
 const FRAME_MS = 20;
 // Al telefono i primi istanti della chiamata si perdono: un breve silenzio in testa al
@@ -168,6 +168,13 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     // Audio raw: niente mark e niente inviaAudio(), quindi non altera latenza o stato parlante.
     invia: (mulaw) => chiamata.inviaAudio(mulaw.toString('base64')),
   });
+  // sottofondo d'ufficio da mescolare sotto la voce di Maria (pannello: scheda Suoni);
+  // la voce resta identica nei tempi: il mix è solo aritmetica sui pacchetti in uscita.
+  const ambientale = creaSuonoContinuo({
+    attivo: () => Boolean(impostazioni().suoni?.attiva ?? CONFIG.tastiera.attiva),
+    volume: () => impostazioni().suoni?.volume ?? CONFIG.tastiera.volume,
+    tipo: () => impostazioni().suoni?.tipo || 'tastiera',
+  });
 
   const testo = (chi, t) => chiamata.testo?.(chi, t);
 
@@ -199,7 +206,9 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       if (!chiamata.web) chiamata.inviaAudio(silenzioTurno().toString('base64'));
     }
     clearTimeout(riempitivo);
-    chiamata.inviaAudio(mulaw.toString('base64'));
+    // la voce parte con lo stesso timing di sempre: il sottofondo si somma al volo, senza attese
+    const sottofondo = ambientale.strappa(mulaw.length);
+    chiamata.inviaAudio(mescolaSuono(mulaw, sottofondo).toString('base64'));
     chiamata.marca();
   }
 

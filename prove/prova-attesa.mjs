@@ -7,6 +7,8 @@ import {
   creaRumoreAttesa,
   creaToccoTastiera,
   creaFruscioCarta,
+  creaSuonoContinuo,
+  mescolaSuono,
   fermaAttesaPrimaDellaVoce,
 } from '../src/attesa.mjs';
 import { controllaImpostazioni, PREDEFINITE } from '../src/impostazioni.mjs';
@@ -175,6 +177,35 @@ test('le impostazioni dei suoni vengono validate nel pannello', () => {
   assert.deepEqual(controllaImpostazioni(base), ["il tipo di suono è 'tastiera' oppure 'ufficio'"]);
   base.suoni.tipo = 'ufficio';
   assert.deepEqual(controllaImpostazioni(base), []);
+});
+
+test('sottofondo continuo: tocchi nel ritmo e silenzio in mezzo', () => {
+  const sotto = creaSuonoContinuo({ volume: () => 0.03, tipo: () => 'tastiera', casuale: () => 0.5 });
+  let tocco = false, silenzio = false, totale = 0;
+  while (totale < 60000 && !(tocco && silenzio)) {
+    const pezzo = sotto.strappa(1600);
+    if (!pezzo) break;
+    if (pezzo.every((x) => x === 0xff)) silenzio = true; else tocco = true;
+    totale += pezzo.length;
+  }
+  assert.ok(tocco, 'escono i tocchi nel sottofondo');
+  assert.ok(silenzio, 'esce anche il silenzio tra i tocchi');
+});
+
+test('sottofondo continuo: spento non dà nulla e rientra se riaccesso al volo', () => {
+  const live = { attiva: false };
+  const sotto = creaSuonoContinuo({ attivo: () => live.attiva, casuale: () => 0.5 });
+  assert.equal(sotto.strappa(100), null, 'spento: niente sottofondo');
+  live.attiva = true;
+  assert.ok(sotto.strappa(100).every((x) => x === 0xff), 'riacceso: parte con il silenzio del ritmo');
+});
+
+test('mescola suono: il sottofondo si somma alla voce, senza sottofondo la voce resta identica', () => {
+  const voce = Buffer.alloc(40, 0xff); // voce silenziosa
+  const mescolato = mescolaSuono(voce, Buffer.alloc(40, 0x00)); // sottofondo fortissimo
+  assert.equal(mescolato.length, voce.length);
+  assert.ok(mescolato.some((x) => x !== 0xff), 'il sottofondo entra nel mix');
+  assert.equal(mescolaSuono(voce, null), voce, 'senza sottofondo la voce non cambia');
 });
 
 const AUDIO_TASTIERA = Buffer.from([0xa1, 0xa2, 0xa3]);

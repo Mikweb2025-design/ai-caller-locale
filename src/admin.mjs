@@ -157,8 +157,8 @@ export function paginaAdmin({ api, web, feed, avatar }) {
 
   <section data-scheda="Suoni">
     <h2>Suoni d'ufficio</h2>
-    <p class="aiuto">Brevi suoni in sottofondo mentre il receptionist prepara la risposta: rendono la telefonata più reale, come se qualcuno scrivesse alla tastiera di lato. Si sentono solo al chiamante e non entrano nel riconoscimento vocale. Il cambio vale subito, anche a chiamata già in corso.</p>
-    <label class="check"><input type="checkbox" data-k="suoni.attiva"> Suoni in sottofondo durante l'attesa</label>
+    <p class="aiuto">Suoni d'ufficio in sottofondo, come se qualcuno scrivesse alla tastiera di lato: si sentono mentre il receptionist prepara la risposta e anche sotto la sua voce. Si sentono solo al chiamante e non entrano nel riconoscimento vocale. Il cambio vale subito, anche a chiamata già in corso.</p>
+    <label class="check"><input type="checkbox" data-k="suoni.attiva"> Suoni d'ufficio in sottofondo</label>
     <div class="griglia" style="margin-top:12px">
       <div><label>Volume <small>(da 0 a 0.04: resta sotto la soglia che interrompe la voce)</small></label><input type="number" step="0.005" min="0" max="0.04" data-k="suoni.volume"></div>
       <div><label>Tipo di suono</label><select data-k="suoni.tipo"><option value="tastiera">tasti di tastiera</option><option value="ufficio">ufficio: tasti e fogli di carta</option></select></div>

@@ -1,6 +1,6 @@
 // Piccoli tocchi di tastiera durante l'attesa del cervello. L'audio e gia nel formato
 // telefonico μ-law 8 kHz e viene inviato senza mark: non conta come voce di Maria.
-import { aMulaw } from './voce.mjs';
+import { aMulaw, daMulaw } from './voce.mjs';
 
 const SR = 8000;
 const VOLUME_MASSIMO = 0.04;
@@ -118,4 +118,66 @@ export function fermaAttesaPrimaDellaVoce(attesa, svuota) {
   const avevaAudio = Boolean(attesa?.ferma());
   if (avevaAudio) svuota();
   return avevaAudio;
+}
+
+// Sorgente continua di suoni d'ufficio da mescolare sotto la voce di Maria: a ogni pezzo di
+// voce si chiede lo stesso numero di byte di sottofondo, dentro ci sono i tocchi nel loro ritmo.
+export function creaSuonoContinuo({
+  attivo = () => true,
+  volume = () => 0.025,
+  tipo = () => 'tastiera',
+  casuale = Math.random,
+} = {}) {
+  const leggiAttivo = typeof attivo === 'function' ? attivo : () => Boolean(attivo);
+  const leggiVolume = typeof volume === 'function' ? volume : () => volume;
+  const leggiTipo = typeof tipo === 'function' ? tipo : () => tipo;
+  let resto = Buffer.alloc(0); // il tocco in corso, se è avanzato rispetto all'ultimo pezzo chiesto
+  let pausa = Math.round(tra(700, 1400, casuale) * SR / 1000); // silenzio prima del prossimo tocco
+
+  const genera = () => {
+    pausa = Math.round(tra(700, 1400, casuale) * SR / 1000);
+    const livello = limita(leggiVolume(), 0, VOLUME_MASSIMO);
+    if (livello <= 0) return Buffer.alloc(0);
+    return leggiTipo() === 'ufficio' && casuale() < 0.25
+      ? creaFruscioCarta({ volume: livello, casuale })
+      : creaToccoTastiera({ volume: livello, casuale });
+  };
+
+  return {
+    // n byte di μ-law di sottofondo (silenzio 0xff compreso), oppure null se spento dal pannello
+    strappa(n) {
+      if (!leggiAttivo() || !(n > 0)) return null;
+      const out = Buffer.alloc(n, 0xff);
+      let scritti = 0;
+      while (scritti < n) {
+        if (resto.length) {
+          const t = Math.min(resto.length, n - scritti);
+          resto.copy(out, scritti, 0, t);
+          resto = resto.slice(t);
+          scritti += t;
+        } else if (pausa > 0) {
+          const t = Math.min(pausa, n - scritti);
+          pausa -= t;
+          scritti += t;
+        } else {
+          resto = genera();
+        }
+      }
+      return out;
+    },
+  };
+}
+
+// Somma il sottofondo sulla voce: μ-law → PCM 16 bit → somma con taglio → μ-law. Nulla di
+// bloccante: è matematica sul flusso in uscita, non aggiunge attesa alla risposta.
+export function mescolaSuono(voce, sottofondo) {
+  if (!sottofondo || !sottofondo.length || !voce?.length) return voce;
+  const pcm = daMulaw(voce);
+  const att = daMulaw(sottofondo.length >= voce.length ? sottofondo.slice(0, voce.length) : sottofondo);
+  for (let i = 0; i < att.length; i += 2) {
+    let s = pcm.readInt16LE(i) + att.readInt16LE(i);
+    if (s > 32767) s = 32767; else if (s < -32768) s = -32768;
+    pcm.writeInt16LE(s, i);
+  }
+  return aMulaw(pcm);
 }
