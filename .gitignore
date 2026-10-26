@@ -32,3 +32,8 @@ voci/confronto-*.wav
 voci/rif-*.wav
 voci/confronto-*
 voci/voce-f-*
+
+# macOS e file temporanei
+.DS_Store
+output/
+tmp/

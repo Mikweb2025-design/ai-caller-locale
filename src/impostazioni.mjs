@@ -110,6 +110,7 @@ export const PREDEFINITE = {
     attiva: CONFIG.tastiera.attiva,
     volume: CONFIG.tastiera.volume,
     tipo: 'tastiera',
+    dopo: true, // piccoli rumori di stanza subito dopo la voce, prima che il cliente risponda
   },
   gestioneRichieste: normalizzaGestioneRichieste(),
 };
@@ -183,7 +184,8 @@ export function salvaImpostazioni(nuove) {
   if (tutte.suoni) {
     tutte.suoni.attiva = Boolean(tutte.suoni.attiva);
     tutte.suoni.volume = Math.min(0.04, Math.max(0, Number(tutte.suoni.volume) || 0));
-    tutte.suoni.tipo = ['tastiera', 'ufficio'].includes(tutte.suoni.tipo) ? tutte.suoni.tipo : 'tastiera';
+    tutte.suoni.tipo = ['tastiera', 'ufficio', 'ambiente'].includes(tutte.suoni.tipo) ? tutte.suoni.tipo : 'tastiera';
+    tutte.suoni.dopo = tutte.suoni.dopo !== false;
   }
   tutte.gestioneRichieste = normalizzaGestioneRichieste(tutte.gestioneRichieste);
   delete tutte.receptionist.personaggio;
@@ -233,6 +235,6 @@ export function controllaImpostazioni(i) {
   if (c && !/^[\w-]+\.wav$/.test(c)) errori.push("la voce è il nome di un file .wav dell'elenco, oppure vuoto (voce predefinita)");
   const suoni = i.suoni || {};
   if (!(Number(suoni.volume) >= 0 && Number(suoni.volume) <= 0.04)) errori.push('il volume dei suoni va da 0 a 0.04');
-  if (suoni.tipo && !['tastiera', 'ufficio'].includes(suoni.tipo)) errori.push("il tipo di suono è 'tastiera' oppure 'ufficio'");
+  if (suoni.tipo && !['tastiera', 'ufficio', 'ambiente'].includes(suoni.tipo)) errori.push("il tipo di suono è 'tastiera', 'ufficio' oppure 'ambiente'");
   return errori;
 }

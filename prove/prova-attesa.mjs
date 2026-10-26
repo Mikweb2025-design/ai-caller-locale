@@ -4,14 +4,20 @@ import { execFileSync } from 'node:child_process';
 import { aMulaw, daMulaw } from '../src/voce.mjs';
 import { gestisciChiamata } from '../src/chiamata.mjs';
 import {
-  creaRumoreAttesa,
-  creaToccoTastiera,
-  creaFruscioCarta,
+  creaChiavi,
   creaClicMouse,
   creaClicPenna,
+  creaCodaUfficio,
+  creaFruscioCarta,
+  creaNotifica,
+  creaPorta,
+  creaRumoreAttesa,
+  creaSedia,
   creaSuonoContinuo,
-  mescolaSuono,
+  creaTazzina,
+  creaToccoTastiera,
   fermaAttesaPrimaDellaVoce,
+  mescolaSuono,
 } from '../src/attesa.mjs';
 import { controllaImpostazioni, PREDEFINITE } from '../src/impostazioni.mjs';
 
@@ -158,6 +164,54 @@ test('volume zero e fruscio di carta: il generatore risponde alle regole del vol
   assert.ok(fruscio.some((x) => x !== 0xff), 'il fruscio non è silenzio');
 });
 
+test('i rumori nuovi della stanza sono udibili ma restano sotto la soglia del VAD', () => {
+  const rumori = [
+    ['sedia', creaSedia({ volume: 0.03, casuale: () => 0.5 }), 1700],
+    ['tazzina', creaTazzina({ volume: 0.03, casuale: () => 0.5 }), 800],
+    ['chiavi', creaChiavi({ volume: 0.03, casuale: () => 0.5 }), 1800],
+    ['notifica', creaNotifica({ volume: 0.03, casuale: () => 0.5 }), 1000],
+    ['porta', creaPorta({ volume: 0.03, casuale: () => 0.5 }), 1400],
+  ];
+  for (const [nome, audio, minimo] of rumori) {
+    assert.ok(Buffer.isBuffer(audio), `${nome}: non è un buffer`);
+    assert.ok(audio.length >= minimo, `${nome}: troppo corto (${audio.length})`);
+    assert.ok(audio.some((x) => x !== 0xff), `${nome}: è silenzio`);
+    const rms = rmsPcm(daMulaw(audio));
+    assert.ok(rms > 5, `${nome}: RMS troppo basso (${rms})`);
+    assert.ok(rms < 500, `${nome}: RMS troppo alto per il VAD (${rms})`);
+  }
+});
+
+test('volume zero spegne anche i rumori nuovi', () => {
+  for (const crea of [creaSedia, creaTazzina, creaChiavi, creaNotifica, creaPorta]) {
+    assert.equal(crea({ volume: 0 }).length, 0);
+  }
+});
+
+test('coda ufficio: un rumore di stanza dopo la voce, scelto dal tipo', () => {
+  const tastiera = creaCodaUfficio({ volume: 0.03, tipo: 'tastiera', casuale: () => 0.5 });
+  const tocco = creaToccoTastiera({ volume: 0.024, casuale: () => 0.5 });
+  assert.ok(tastiera.equals(tocco), 'con tipo tastiera la coda è un tocco di tastiera');
+  const visti = new Set();
+  for (let i = 0; i < 40; i++) {
+    const pezzo = creaCodaUfficio({ volume: 0.03, tipo: 'ufficio' });
+    assert.ok(pezzo.length > 0, 'la coda non deve essere vuota');
+    assert.ok(pezzo.some((x) => x !== 0xff), 'la coda non deve essere silenzio');
+    visti.add(pezzo.length);
+  }
+  assert.ok(visti.size > 3, 'la coda non è sempre lo stesso rumore');
+  assert.equal(creaCodaUfficio({ volume: 0 }).length, 0);
+});
+
+test('tipo ambiente: soffio continuo di stanza sotto i rumori', () => {
+  const sotto = creaSuonoContinuo({ volume: () => 0.02, tipo: () => 'ambiente', casuale: () => 0.5 });
+  const pezzo = sotto.strappa(1600);
+  assert.ok(pezzo.some((x) => x !== 0xff), 'il clima si sente, non è silenzio');
+  const rms = rmsPcm(daMulaw(pezzo));
+  assert.ok(rms > 2, `clima troppo basso: ${rms}`);
+  assert.ok(rms < 500, `clima troppo alto per il VAD: ${rms}`);
+});
+
 test('attivo, volume e tipo come funzione: si leggono a ogni avvio', () => {
   const timer = timerFinti();
   const inviati = [];
@@ -187,7 +241,9 @@ test('le impostazioni dei suoni vengono validate nel pannello', () => {
   assert.deepEqual(controllaImpostazioni(base), ['il volume dei suoni va da 0 a 0.04']);
   base.suoni.volume = 0.02;
   base.suoni.tipo = 'silenzio';
-  assert.deepEqual(controllaImpostazioni(base), ["il tipo di suono è 'tastiera' oppure 'ufficio'"]);
+  assert.deepEqual(controllaImpostazioni(base), ["il tipo di suono è 'tastiera', 'ufficio' oppure 'ambiente'"]);
+  base.suoni.tipo = 'ambiente';
+  assert.deepEqual(controllaImpostazioni(base), []);
   base.suoni.tipo = 'ufficio';
   assert.deepEqual(controllaImpostazioni(base), []);
 });
@@ -324,6 +380,7 @@ async function scenario(nome, { web = false } = {}) {
     creaRumoreAttesa: (opzioni) => creaTastieraFinta(controller)({ ...opzioni, attivo: web ? false : true }),
     creaSuonoContinuo: () => ({ strappa: () => null }),
     mescolaSuono: (voce) => voce,
+    creaCodaUfficio: () => Buffer.alloc(0),
   });
   await chiamata.alPartire();
   chiamata.azzera(); // il saluto non appartiene alla prova dell'attesa

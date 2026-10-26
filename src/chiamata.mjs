@@ -12,7 +12,7 @@ import { creaRegolatoreIntercalari } from './intercalari.mjs';
 import { impostazioni } from './impostazioni.mjs';
 import { estraiIntento, regoleCandidate } from './intenti.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta } from './voce.mjs';
-import { creaRumoreAttesa, creaSuonoContinuo, fermaAttesaPrimaDellaVoce, mescolaSuono } from './attesa.mjs';
+import { creaCodaUfficio, creaRumoreAttesa, creaSuonoContinuo, fermaAttesaPrimaDellaVoce, mescolaSuono } from './attesa.mjs';
 
 const FRAME_MS = 20;
 // Al telefono i primi istanti della chiamata si perdono: un breve silenzio in testa al
@@ -132,6 +132,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   const segmentiSaluto = dipendenze.salutoSegmenti || salutoSegmenti;
   const creaTastiera = dipendenze.creaRumoreAttesa || creaRumoreAttesa;
   const creaSottofondo = dipendenze.creaSuonoContinuo || creaSuonoContinuo;
+  const creaCoda = dipendenze.creaCodaUfficio || creaCodaUfficio;
   const mescolaVoceSottofondo = dipendenze.mescolaSuono || mescolaSuono;
   const conferma = dipendenze.confermaAppuntamento || confermaAppuntamento;
   const registra = dipendenze.registraRichiamo || registraRichiamo;
@@ -191,6 +192,36 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     tipo: () => impostazioni().suoni?.tipo || 'tastiera',
   });
 
+  // Rumori di stanza subito dopo la voce (pannello: "suoni dopo la voce"): il segno che
+  // l'ufficio continua anche quando Maria tace. Audio raw senza mark: non conta come voce.
+  let timerCoda = null;
+  let ultimoAudioVoce = 0;
+  const vuoleCoda = () => Boolean(impostazioni().suoni?.attiva ?? CONFIG.tastiera.attiva)
+    && (impostazioni().suoni?.dopo ?? true);
+  function fermaCoda() {
+    if (timerCoda) clearTimeout(timerCoda);
+    timerCoda = null;
+  }
+  function programmaCoda(ritardoMs = 420 + Math.round(Math.random() * 380)) {
+    fermaCoda();
+    if (chiudere || chiamata.chiusa || !vuoleCoda()) return;
+    timerCoda = setTimeout(() => {
+      timerCoda = null;
+      if (chiudere || chiamata.chiusa || chiamata.sta_parlando) return;
+      // la voce può essere ancora in coda: si aspetta che l'ultimo pezzo sia uscito davvero
+      const passato = Date.now() - ultimoAudioVoce;
+      if (passato < 380) return programmaCoda(380 - passato + Math.round(Math.random() * 200));
+      try {
+        const audio = creaCoda({
+          volume: Number(impostazioni().suoni?.volume ?? CONFIG.tastiera.volume),
+          tipo: impostazioni().suoni?.tipo || 'tastiera',
+        });
+        if (audio && audio.length) chiamata.inviaAudio(audio.toString('base64'));
+      } catch (e) { chiamata.log('⚠️ rumore di stanza non inviato:', e.message); }
+    }, ritardoMs);
+    if (typeof timerCoda.unref === 'function') timerCoda.unref();
+  }
+
   const testo = (chi, t) => chiamata.testo?.(chi, t);
 
   function interrompi(motivo) {
@@ -202,6 +233,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     testoTurno = '';
     giaDetto = false;
     clearTimeout(riempitivo);
+    fermaCoda();
     const avevaTastiera = tastiera.ferma();
     if (chiamata.sta_parlando || avevaTastiera) chiamata.svuota();
     if (chiamata.sta_parlando) chiamata.log(`✂ ${motivo}`);
@@ -224,6 +256,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     // la voce parte con lo stesso timing di sempre: il sottofondo si somma al volo, senza attese
     const sottofondo = ambientale.strappa(mulaw.length);
     chiamata.inviaAudio(mescolaVoceSottofondo(mulaw, sottofondo).toString('base64'));
+    ultimoAudioVoce = Date.now();
     chiamata.marca();
   }
 
@@ -235,6 +268,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     coda = coda.then(async () => {
       if (segnale.aborted) return;
       try { await pronunciaTesto(frase, (p) => { if (!segnale.aborted) inviaAudio(p); }, { segnale, lingua }); } catch (e) { if (!segnale.aborted) chiamata.log('errore voce', e.message); }
+      if (!segnale.aborted) programmaCoda();
     });
   }
 
@@ -412,6 +446,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
             chiamata.log('⚠️ FINE ignorato: il cliente non ha ancora salutato');
           } else {
             chiudere = true;
+            fermaCoda();
             await coda;
             await chiamata.finitoDiParlare();
             await new Promise((r) => setTimeout(r, 600));
@@ -551,6 +586,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
         fraseInCache(x.testo, x.lingua).catch(() => {}); // versione verificata, pronta per la prossima chiamata
       }
     }
+    if (!chiamata.chiusa) programmaCoda(700 + Math.round(Math.random() * 400));
     await attendiCervello();
     if (chiamata.chiusa) cervello.chiudi();
   };

@@ -108,6 +108,143 @@ export function creaClicPenna(opzioni = {}) {
   return sintetizzaClic({ minF: 900, maxF: 1400, volume: 0.025, casuale: Math.random, ...opzioni });
 }
 
+// Sedia che scricchiola: legno che flette, attrito grave e irregolare.
+export function creaSedia({ volume = 0.02, casuale = Math.random } = {}) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  const campioni = Math.floor(intero(220, 430, casuale) * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  const frequenza = tra(65, 125, casuale);
+  let grave = 0;
+  let prima = 0;
+  for (let i = 0; i < campioni; i++) {
+    const inviluppo = Math.sin(Math.PI * i / campioni) ** 1.4;
+    const rumore = casuale() * 2 - 1;
+    const crepitio = rumore - prima; // solo la parte acuta: il cigolio del legno
+    prima = rumore;
+    grave += (rumore - grave) * 0.03; // e la parte molto grave: la struttura che flette
+    const valore = grave * 2.6 + crepitio * 0.22 + Math.sin(2 * Math.PI * frequenza * i / SR) * 0.16;
+    pcm.writeInt16LE(limita(Math.round(32767 * livello * inviluppo * valore), -32768, 32767), i * 2);
+  }
+  return aMulaw(pcm);
+}
+
+// Tazzina appoggiata sulla scrivania: ceramica, due o tre parziali che muoiono subito.
+export function creaTazzina({ volume = 0.02, casuale = Math.random } = {}) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  const campioni = Math.floor(intero(110, 180, casuale) * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  const somma = (n, valore) => {
+    if (n < 0 || n >= campioni) return;
+    pcm.writeInt16LE(limita(pcm.readInt16LE(n * 2) + Math.round(valore), -32768, 32767), n * 2);
+  };
+  const colpo = (inizioMs, forza) => {
+    const i0 = Math.floor(inizioMs * SR / 1000);
+    const parziali = [tra(2100, 2600, casuale), tra(3300, 3900, casuale), tra(4700, 5400, casuale)];
+    const durata = intero(16, 26, casuale);
+    for (let i = 0; i < durata; i++) {
+      const inviluppo = Math.exp(-i * 4 / durata);
+      let valore = 0;
+      for (let p = 0; p < parziali.length; p++) valore += Math.sin(2 * Math.PI * parziali[p] * i / SR) / (p + 1.1);
+      somma(i0 + i, 32767 * livello * forza * inviluppo * valore * 1.8);
+    }
+  };
+  colpo(0, 1);
+  if (casuale() < 0.45) colpo(intero(35, 70, casuale), 0.5); // il piattino che si riassesta
+  return aMulaw(pcm);
+}
+
+// Mazzo di chiavi: più tintinnii metallici vicini, come quando si cercano in tasca.
+export function creaChiavi({ volume = 0.018, casuale = Math.random } = {}) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  const quanti = intero(4, 7, casuale);
+  const campioni = Math.floor(intero(240, 380, casuale) * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  const somma = (n, valore) => {
+    if (n < 0 || n >= campioni) return;
+    pcm.writeInt16LE(limita(pcm.readInt16LE(n * 2) + Math.round(valore), -32768, 32767), n * 2);
+  };
+  for (let k = 0; k < quanti; k++) {
+    const i0 = Math.floor(tra(0, campioni * 0.75, casuale));
+    const frequenza = tra(2400, 5200, casuale);
+    const durata = intero(8, 16, casuale);
+    const forza = tra(0.35, 0.9, casuale);
+    for (let i = 0; i < durata && i0 + i < campioni; i++) {
+      somma(i0 + i, Math.sin(2 * Math.PI * frequenza * i / SR) * 32767 * livello * forza * Math.exp(-i * 4 / durata) * 2.4);
+    }
+  }
+  return aMulaw(pcm);
+}
+
+// Notifica del computer: due bip bassi, quasi coperti dall'ambiente.
+export function creaNotifica({ volume = 0.014, casuale = Math.random } = {}) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  const campioni = Math.floor(intero(150, 210, casuale) * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  const bip = (inizioMs, frequenza, durataMs) => {
+    const i0 = Math.floor(inizioMs * SR / 1000);
+    const durata = Math.floor(durataMs * SR / 1000);
+    for (let i = 0; i < durata && i0 + i < campioni; i++) {
+      const inviluppo = Math.sin(Math.PI * i / durata) ** 2;
+      pcm.writeInt16LE(limita(Math.round(Math.sin(2 * Math.PI * frequenza * i / SR) * 32767 * livello * 0.55 * inviluppo), -32768, 32767), (i0 + i) * 2);
+    }
+  };
+  bip(0, tra(620, 720, casuale), 55);
+  bip(90, tra(880, 980, casuale), 55);
+  return aMulaw(pcm);
+}
+
+// Porta lontana: un tonfo sordo con la coda della stanza.
+export function creaPorta({ volume = 0.018, casuale = Math.random } = {}) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  const campioni = Math.floor(intero(180, 300, casuale) * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  const frequenza = tra(55, 85, casuale);
+  let filtro = 0;
+  for (let i = 0; i < campioni; i++) {
+    const t = i / SR;
+    const tonfo = Math.sin(2 * Math.PI * frequenza * t) * Math.exp(-t * 22);
+    const rumore = casuale() * 2 - 1;
+    filtro += (rumore - filtro) * 0.08;
+    const coda = filtro * 1.4 * Math.exp(-t * 9);
+    pcm.writeInt16LE(limita(Math.round(32767 * livello * 0.7 * (tonfo * 1.1 + coda)), -32768, 32767), i * 2);
+  }
+  return aMulaw(pcm);
+}
+
+// La miscela d'ufficio: tasti, carta, mouse, penna, e ogni tanto qualcosa intorno.
+function suonoUfficio(livello, casuale) {
+  const r = casuale();
+  if (r < 0.42) return creaToccoTastiera({ volume: livello, casuale });
+  if (r < 0.62) return creaFruscioCarta({ volume: livello, casuale });
+  if (r < 0.71) return creaClicMouse({ volume: livello, casuale });
+  if (r < 0.78) return creaClicPenna({ volume: livello, casuale });
+  if (r < 0.86) return creaSedia({ volume: livello, casuale });
+  if (r < 0.92) return creaTazzina({ volume: livello, casuale });
+  if (r < 0.96) return creaChiavi({ volume: livello, casuale });
+  if (r < 0.985) return creaNotifica({ volume: livello, casuale });
+  return creaPorta({ volume: livello, casuale });
+}
+
+// Un ritaglio di ufficio da mandare dopo la voce: il segno che la stanza c'è anche quando
+// Maria tace (un foglio spostato, la sedia, la tazzina).
+export function creaCodaUfficio({ volume = 0.02, tipo = 'ufficio', casuale = Math.random } = {}) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  if (tipo === 'tastiera') return creaToccoTastiera({ volume: livello * 0.8, casuale });
+  const r = casuale();
+  if (r < 0.34) return creaFruscioCarta({ volume: livello, casuale });
+  if (r < 0.55) return creaSedia({ volume: livello * 0.9, casuale });
+  if (r < 0.74) return creaTazzina({ volume: livello * 0.85, casuale });
+  if (r < 0.88) return creaChiavi({ volume: livello * 0.8, casuale });
+  if (r < 0.96) return creaNotifica({ volume: livello * 0.7, casuale });
+  return creaPorta({ volume: livello * 0.8, casuale });
+}
+
 export function creaRumoreAttesa({
   invia,
   attivo = true,
@@ -122,14 +259,10 @@ export function creaRumoreAttesa({
   const leggiAttivo = typeof attivo === 'function' ? attivo : () => Boolean(attivo);
   const leggiVolume = typeof volume === 'function' ? volume : () => volume;
   const leggiTipo = typeof tipo === 'function' ? tipo : () => tipo;
-  // la miscela d'ufficio: per lo più tasti, poi carta, mouse e penna
+  // la miscela d'ufficio: per lo più tasti, poi carta, mouse, penna e i rumori della stanza
   const genera = (livello) => {
-    if (leggiTipo() !== 'ufficio') return creaToccoTastiera({ volume: livello, casuale });
-    const r = casuale();
-    if (r < 0.55) return creaToccoTastiera({ volume: livello, casuale });
-    if (r < 0.75) return creaFruscioCarta({ volume: livello, casuale });
-    if (r < 0.9) return creaClicMouse({ volume: livello, casuale });
-    return creaClicPenna({ volume: livello, casuale });
+    if (leggiTipo() !== 'ufficio' && leggiTipo() !== 'ambiente') return creaToccoTastiera({ volume: livello, casuale });
+    return suonoUfficio(livello, casuale);
   };
   let inCorso = false;
   let haInviato = false;
@@ -185,46 +318,67 @@ export function creaSuonoContinuo({
   volume = () => 0.025,
   tipo = () => 'tastiera',
   casuale = Math.random,
+  clima = true,
 } = {}) {
   const leggiAttivo = typeof attivo === 'function' ? attivo : () => Boolean(attivo);
   const leggiVolume = typeof volume === 'function' ? volume : () => volume;
   const leggiTipo = typeof tipo === 'function' ? tipo : () => tipo;
-  let resto = Buffer.alloc(0); // il tocco in corso, se è avanzato rispetto all'ultimo pezzo chiesto
-  let pausa = Math.round(tra(700, 1400, casuale) * SR / 1000); // silenzio prima del prossimo tocco
+  const pause = (modo) => {
+    if (modo === 'ambiente') return intero(1500, 3000, casuale);
+    if (modo === 'ufficio') return intero(900, 1900, casuale);
+    return intero(700, 1400, casuale);
+  };
+  let resto = Buffer.alloc(0); // il suono in corso, in PCM: avanza di pezzo in pezzo
+  let pausa = Math.round(pause('tastiera') * SR / 1000); // silenzio prima del prossimo suono
+  let filtroClima = 0; // stato del soffio d'ambiente: continua da un pezzo all'altro
+  let faseClima = 0;
 
-  const genera = () => {
-    pausa = Math.round(tra(700, 1400, casuale) * SR / 1000);
-    const livello = limita(leggiVolume(), 0, VOLUME_MASSIMO);
-    if (livello <= 0) return Buffer.alloc(0);
-    if (leggiTipo() !== 'ufficio') return creaToccoTastiera({ volume: livello, casuale });
-    const r = casuale();
-    if (r < 0.55) return creaToccoTastiera({ volume: livello, casuale });
-    if (r < 0.75) return creaFruscioCarta({ volume: livello, casuale });
-    if (r < 0.9) return creaClicMouse({ volume: livello, casuale });
-    return creaClicPenna({ volume: livello, casuale });
+  const genera = (livello) => {
+    const modo = leggiTipo();
+    pausa = Math.round(pause(modo) * SR / 1000);
+    if (modo === 'tastiera') return creaToccoTastiera({ volume: livello, casuale });
+    return suonoUfficio(livello, casuale);
   };
 
   return {
     // n byte di μ-law di sottofondo (silenzio 0xff compreso), oppure null se spento dal pannello
     strappa(n) {
       if (!leggiAttivo() || !(n > 0)) return null;
-      const out = Buffer.alloc(n, 0xff);
+      const livello = limita(leggiVolume(), 0, VOLUME_MASSIMO);
+      if (livello <= 0) return Buffer.alloc(n, 0xff);
+      const modo = leggiTipo();
+      // tutto si somma in PCM e si converte una volta sola: clima, suoni e silenzio
+      const pcm = Buffer.alloc(n * 2);
+      const somma = (i, valore) => {
+        if (i < 0 || i >= n) return;
+        pcm.writeInt16LE(limita(pcm.readInt16LE(i * 2) + Math.round(valore), -32768, 32767), i * 2);
+      };
+      // il soffio della stanza (ventilazione, computer accesi): basso e continuo, non un fruscio
+      if (clima && modo !== 'tastiera') {
+        const ampiezza = 32767 * livello * (modo === 'ambiente' ? 1.5 : 1.1);
+        for (let i = 0; i < n; i++) {
+          filtroClima += ((casuale() * 2 - 1) - filtroClima) * 0.05;
+          faseClima += 2 * Math.PI * 90 / SR;
+          if (faseClima > 2 * Math.PI) faseClima -= 2 * Math.PI;
+          somma(i, (filtroClima * 1.4 + Math.sin(faseClima) * 0.05) * ampiezza);
+        }
+      }
       let scritti = 0;
       while (scritti < n) {
         if (resto.length) {
-          const t = Math.min(resto.length, n - scritti);
-          resto.copy(out, scritti, 0, t);
-          resto = resto.slice(t);
-          scritti += t;
+          const quanti = Math.min(Math.floor(resto.length / 2), n - scritti);
+          for (let i = 0; i < quanti; i++) somma(scritti + i, resto.readInt16LE(i * 2));
+          resto = resto.slice(quanti * 2);
+          scritti += quanti;
         } else if (pausa > 0) {
-          const t = Math.min(pausa, n - scritti);
-          pausa -= t;
-          scritti += t;
+          const quanti = Math.min(pausa, n - scritti);
+          pausa -= quanti;
+          scritti += quanti;
         } else {
-          resto = genera();
+          resto = daMulaw(genera(livello));
         }
       }
-      return out;
+      return aMulaw(pcm);
     },
   };
 }

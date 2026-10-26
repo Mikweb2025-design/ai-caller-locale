@@ -42,13 +42,22 @@ export function paginaAdmin({ api, web, feed, avatar }) {
   * { box-sizing:border-box; }
   html, body { background:var(--sfondo); }
   body { margin:0; font:15px/1.45 system-ui, sans-serif; color:var(--testo); }
-  header { position:sticky; top:0; z-index:2; background:var(--sfondo); border-bottom:1px solid var(--bordo); }
-  .barra { max-width:980px; margin:0 auto; padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header { position:sticky; top:0; z-index:3; background:var(--sfondo); border-bottom:1px solid var(--bordo); }
+  .barra { max-width:1180px; margin:0 auto; padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   .barra h1 { font-size:18px; margin:0; flex:1; min-width:180px; }
-  nav { max-width:980px; margin:0 auto; padding:0 16px 8px; display:flex; gap:6px; overflow-x:auto; }
-  nav a { padding:6px 12px; border-radius:999px; color:var(--testo); text-decoration:none; white-space:nowrap; border:1px solid var(--bordo); font-size:14px; }
+  .guscio { max-width:1180px; margin:0 auto; padding:16px; display:grid; grid-template-columns:232px minmax(0,1fr); gap:20px; align-items:start; }
+  nav#schede { position:sticky; top:74px; max-height:calc(100vh - 94px); overflow:auto; display:block; padding:0 2px 4px; }
+  nav .gruppo { margin:0 0 14px; }
+  nav .gruppo > span { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); margin:0 0 5px 8px; }
+  nav a { display:block; padding:7px 10px; border-radius:8px; color:var(--testo); text-decoration:none; border:1px solid transparent; font-size:14px; }
+  nav a:hover { border-color:var(--bordo); }
   nav a.attiva { background:var(--accento); color:#fff; border-color:var(--accento); }
-  main { max-width:980px; margin:0 auto; padding:16px; }
+  nav .cerca { width:100%; margin:0 0 12px; padding:8px 10px; font-size:14px; }
+  .solo-mobile { display:none; }
+  #schedeMobile { width:auto; max-width:62vw; }
+  header a.secondario { text-decoration:none; color:var(--testo); }
+  nav .vuoto { color:var(--tenue); font-size:13px; margin:6px 8px; }
+  main { min-width:0; }
   section { display:none; background:var(--carta); border:1px solid var(--bordo); border-radius:14px; padding:18px; margin-bottom:16px; }
   section.attiva { display:block; }
   h2 { font-size:17px; margin:0 0 4px; }
@@ -83,17 +92,27 @@ export function paginaAdmin({ api, web, feed, avatar }) {
   .avatar-editor { display:flex; gap:18px; align-items:center; padding:14px; margin:0 0 18px; border:1px solid var(--bordo); border-radius:14px; background:var(--sfondo); }
   .avatar-editor img { width:92px; height:92px; flex:0 0 auto; border:3px solid color-mix(in srgb,var(--accento) 55%,var(--bordo)); border-radius:50%; object-fit:cover; object-position:center 34%; }
   .avatar-editor .azioni { flex:1; min-width:0; }
+  @media (max-width:880px) {
+    .guscio { grid-template-columns:1fr; padding:12px; gap:12px; }
+    nav#schede { display:none; }
+    .solo-mobile { display:block; }
+  }
   @media (max-width:560px) { .avatar-editor { align-items:flex-start; } .avatar-editor img { width:76px; height:76px; } }
 </style></head>
 <body>
 <header>
   <div class="barra">
     <h1>⚙️ Impostazioni del receptionist</h1>
-    <a href="${web}"><button class="secondario" type="button">📞 Prova una chiamata</button></a>
+    <input id="cercaSchedeMobile" class="solo-mobile cerca" type="search" placeholder="Cerca" aria-label="Cerca un'impostazione" style="flex:1 1 120px; margin:0; width:auto">
+    <select id="schedeMobile" class="solo-mobile" aria-label="Scegli la scheda"></select>
+    <a class="secondario" href="${escHtml(web)}" style="padding:9px 16px;border-radius:999px;border:1px solid var(--bordo);text-decoration:none">📞 Prova una chiamata</a>
     <button id="salva">Salva</button>
   </div>
-  <nav id="schede"></nav>
 </header>
+<div class="guscio">
+<nav id="schede" aria-label="Schede delle impostazioni">
+  <input id="cercaSchede" class="cerca" type="search" placeholder="Cerca (es. volume, orari, twilio)" aria-label="Cerca un'impostazione">
+</nav>
 <main>
   <section data-scheda="Appuntamenti">
     <h2>Appuntamenti</h2>
@@ -131,7 +150,7 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     <h2>Il receptionist</h2>
     <p class="aiuto">Nome, foto, saluto e istruzioni in più. La voce si cambia nella scheda <strong>Voce</strong>.</p>
     <div class="avatar-editor">
-      <img id="avatarAnteprima" src="${avatar}" alt="Anteprima della foto del receptionist">
+      <img id="avatarAnteprima" src="${escHtml(avatar)}" alt="Anteprima della foto del receptionist">
       <div class="azioni">
         <label for="avatarFile">Foto nella landing page <small>(JPG, PNG o WebP, massimo 3 MB)</small></label>
         <input type="file" id="avatarFile" accept="image/jpeg,image/png,image/webp">
@@ -157,12 +176,17 @@ export function paginaAdmin({ api, web, feed, avatar }) {
 
   <section data-scheda="Suoni">
     <h2>Suoni d'ufficio</h2>
-    <p class="aiuto">Suoni d'ufficio in sottofondo, come se qualcuno scrivesse alla tastiera di lato: si sentono mentre il receptionist prepara la risposta e anche sotto la sua voce. Si sentono solo al chiamante e non entrano nel riconoscimento vocale. Il cambio vale subito, anche a chiamata già in corso.</p>
+    <p class="aiuto">L'ufficio intorno a Maria: tasti, fogli, mouse, la sedia, la tazzina, le chiavi, una porta lontana. Si sentono mentre prepara la risposta, sotto la sua voce e — se vuoi — subito dopo che ha finito di parlare. Li sente solo il chiamante e non entrano nel riconoscimento vocale. Il cambio vale subito, anche a chiamata già in corso.</p>
     <label class="check"><input type="checkbox" data-k="suoni.attiva"> Suoni d'ufficio in sottofondo</label>
     <div class="griglia" style="margin-top:12px">
       <div><label>Volume <small>(da 0 a 0.04: resta sotto la soglia che interrompe la voce)</small></label><input type="number" step="0.005" min="0" max="0.04" data-k="suoni.volume"></div>
-      <div><label>Tipo di suono</label><select data-k="suoni.tipo"><option value="tastiera">tasti di tastiera</option><option value="ufficio">ufficio: tasti e fogli di carta</option></select></div>
+      <div><label>Tipo di suono</label><select data-k="suoni.tipo">
+        <option value="tastiera">solo tastiera</option>
+        <option value="ufficio">ufficio: stanza viva (tasti, carta, sedia, tazzina…)</option>
+        <option value="ambiente">ambiente: soffio della stanza e rumori radi</option>
+      </select></div>
     </div>
+    <label class="check" style="margin-top:12px"><input type="checkbox" data-k="suoni.dopo"> <strong>Suoni dopo la voce</strong> <small>un piccolo rumore di stanza quando Maria ha finito di parlare, prima che risponda il cliente</small></label>
   </section>
 
   <section data-scheda="Gestione richieste">
@@ -229,7 +253,7 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     <button class="secondario" type="button" id="aggiungiConto">+ Aggiungi calendario</button>
     <h2 style="margin-top:26px">Vedere gli appuntamenti in Google o Outlook</h2>
     <p class="aiuto">Abbonati a questo indirizzo da Google Calendar (Altri calendari → Da URL), Apple Calendario (Archivio → Nuovo abbonamento) o Outlook (Aggiungi calendario → Da Internet). Si aggiorna da solo.</p>
-    <div class="riga"><code id="feed">${feed}</code><button class="secondario" type="button" id="copiaFeed">Copia</button></div>
+    <div class="riga"><code id="feed">${escHtml(feed)}</code><button class="secondario" type="button" id="copiaFeed">Copia</button></div>
     <p class="aiuto" style="margin-top:6px">Google e Outlook ricaricano i calendari abbonati ogni qualche ora e devono raggiungere il server da internet (URL_PUBBLICO). Apple Calendario sullo stesso Mac va anche in locale.</p>
     <h2 style="margin-top:22px">Bloccare gli orari da un calendario in sola lettura</h2>
     <p class="aiuto">Incolla l'indirizzo iCal privato dei tuoi calendari, uno per riga: i loro impegni tolgono i posti liberi.<br>
@@ -307,7 +331,8 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     <label class="check"><input type="checkbox" data-k="sms.attivo"> SMS attivi</label>
   </section>
 </main>
-<div class="msg" id="msg"></div>
+</div>
+<div class="msg" id="msg" role="status" aria-live="polite"></div>
 <script>
 const API = ${JSON.stringify(api)};
 const AVATAR = ${JSON.stringify(avatar)};
@@ -318,17 +343,114 @@ const htmlRegolaRichiesta = ${htmlRegolaRichiesta.toString()};
 
 $('#giorni').innerHTML = Object.entries(GIORNI).map(([k, n]) => '<label style="margin:0">' + n + '</label><input data-k="orari.' + k + '" placeholder="chiuso">').join('');
 
-// schede
+// schede raggruppate: si trovano tutte a colpo d'occhio, senza scorrere un nastro di linguette
+const GRUPPI = [
+  { nome: 'Agenda', schede: ['Appuntamenti', 'Orari', 'Calendari'] },
+  { nome: 'Persona', schede: ['Receptionist', 'Voce', 'Suoni', 'Design'] },
+  { nome: 'Come risponde', schede: ['Attività', 'Gestione richieste'] },
+  { nome: 'Collegamenti', schede: ['Cervello', 'Telefono', 'Email e SMS'] },
+];
 const sezioni = [...document.querySelectorAll('section')];
+const perNome = new Map(sezioni.map((s) => [s.dataset.scheda, s]));
+const linkScheda = new Map();
+for (const g of GRUPPI) {
+  const box = document.createElement('div');
+  box.className = 'gruppo';
+  box.innerHTML = '<span>' + g.nome + '</span>';
+  for (const nome of g.schede) {
+    if (!perNome.has(nome)) continue;
+    const a = document.createElement('a');
+    a.href = '#' + encodeURIComponent(nome);
+    a.textContent = nome;
+    a.onclick = (e) => { e.preventDefault(); scheda(nome); };
+    box.append(a);
+    linkScheda.set(nome, a);
+  }
+  $('#schede').append(box);
+}
+// schede non elencate nei gruppi: nessuna deve restare irraggiungibile
+for (const s of sezioni) {
+  if (linkScheda.has(s.dataset.scheda)) continue;
+  const box = document.createElement('div');
+  box.className = 'gruppo';
+  box.innerHTML = '<span>Altro</span>';
+  const a = document.createElement('a');
+  a.href = '#' + encodeURIComponent(s.dataset.scheda);
+  a.textContent = s.dataset.scheda;
+  a.onclick = (e) => { e.preventDefault(); scheda(s.dataset.scheda); };
+  box.append(a);
+  $('#schede').append(box);
+  linkScheda.set(s.dataset.scheda, a);
+}
+// sul telefono un menù a tendina, con gli stessi gruppi: niente nastro da scorrere
+const mobile = $('#schedeMobile');
+for (const g of GRUPPI) {
+  const og = document.createElement('optgroup');
+  og.label = g.nome;
+  for (const nome of g.schede) {
+    if (!perNome.has(nome)) continue;
+    const o = document.createElement('option');
+    o.value = nome; o.textContent = nome;
+    og.append(o);
+  }
+  mobile.append(og);
+}
+const senzaAccenti = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const nomeScheda = (hash) => { try { return decodeURIComponent(hash); } catch { return ''; } };
+
 const scheda = (nome) => {
   sezioni.forEach((s) => s.classList.toggle('attiva', s.dataset.scheda === nome));
-  [...$('#schede').children].forEach((a) => a.classList.toggle('attiva', a.textContent === nome));
+  for (const [k, a] of linkScheda) {
+    a.classList.toggle('attiva', k === nome);
+    if (k === nome) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  }
+  mobile.value = nome;
   try { localStorage.setItem('scheda', nome); } catch {}
+  if (nomeScheda(location.hash.slice(1)) !== nome) { try { history.replaceState(null, '', '#' + encodeURIComponent(nome)); } catch {} }
 };
-for (const s of sezioni) { const a = document.createElement('a'); a.href = '#'; a.textContent = s.dataset.scheda; a.onclick = (e) => { e.preventDefault(); scheda(s.dataset.scheda); }; $('#schede').append(a); }
 let iniziale = 'Appuntamenti'; try { iniziale = localStorage.getItem('scheda') || iniziale; } catch {}
-if (location.hash) iniziale = decodeURIComponent(location.hash.slice(1));
-scheda(sezioni.some((s) => s.dataset.scheda === iniziale) ? iniziale : 'Appuntamenti');
+if (location.hash) iniziale = nomeScheda(location.hash.slice(1));
+scheda(perNome.has(iniziale) ? iniziale : 'Appuntamenti');
+
+// ricerca: filtra le schede per nome o per quello che c'è dentro, e apre l'unica trovata
+function cerca(q) {
+  const testo = senzaAccenti(q);
+  let trovate = 0;
+  for (const [nome, a] of linkScheda) {
+    const s = perNome.get(nome);
+    const trovata = !testo || senzaAccenti(nome).includes(testo) || senzaAccenti(s.textContent).includes(testo);
+    a.style.display = trovata ? '' : 'none';
+    if (trovata) trovate++;
+  }
+  for (const box of document.querySelectorAll('#schede .gruppo')) {
+    const visibili = [...box.querySelectorAll('a')].filter((a) => a.style.display !== 'none');
+    box.style.display = visibili.length ? '' : 'none';
+  }
+  let vuoto = $('#schede .vuoto');
+  if (!trovate && testo) {
+    if (!vuoto) { vuoto = document.createElement('p'); vuoto.className = 'vuoto'; $('#schede').append(vuoto); }
+    vuoto.textContent = 'Nessuna scheda con “' + q.trim() + '”';
+  } else if (vuoto) vuoto.remove();
+  // sul telefono si filtrano le voci della tendina, così la ricerca funziona anche lì
+  for (const o of mobile.querySelectorAll('option')) {
+    const dentro = senzaAccenti(o.value) + ' ' + senzaAccenti(perNome.get(o.value)?.textContent || '');
+    o.hidden = Boolean(testo) && !dentro.includes(testo);
+  }
+  if (testo && trovate === 1) scheda([...linkScheda].find(([, a]) => a.style.display !== 'none')[0]);
+  return trovate;
+}
+const campoCerca = $('#cercaSchede');
+const campoCercaMobile = $('#cercaSchedeMobile');
+const svuotaCerca = () => { campoCerca.value = ''; campoCercaMobile.value = ''; cerca(''); };
+campoCerca.oninput = () => { campoCercaMobile.value = campoCerca.value; cerca(campoCerca.value); };
+campoCercaMobile.oninput = () => { campoCerca.value = campoCercaMobile.value; cerca(campoCercaMobile.value); };
+mobile.onchange = () => { svuotaCerca(); scheda(mobile.value); };
+
+// i "suoni dopo la voce" non hanno senso con i suoni spenti: la casella lo dice
+const casellaSuoni = document.querySelector('[data-k="suoni.attiva"]');
+const casellaDopo = document.querySelector('[data-k="suoni.dopo"]');
+const sincronizzaDopo = () => { if (casellaSuoni && casellaDopo) casellaDopo.disabled = !casellaSuoni.checked; };
+if (casellaSuoni) { casellaSuoni.addEventListener('change', sincronizzaDopo); sincronizzaDopo(); }
 
 const avviso = (t, ms = 3000) => { const m = $('#msg'); m.textContent = t; m.style.display = 'block'; clearTimeout(avviso.t); avviso.t = setTimeout(() => (m.style.display = 'none'), ms); };
 const prendi = (o, k) => k.split('.').reduce((x, p) => x?.[p], o);
@@ -842,7 +964,7 @@ $('#vocSalva').onclick = async () => {
 };
 
 (async () => {
-  try { servizi = await chiedi('/caldav/servizi'); serviziCervello = await chiedi('/cervello/servizi'); dati = await chiedi('/impostazioni'); riempi(); await Promise.all([elenco(), posti(), vociRicarica()]); }
+  try { servizi = await chiedi('/caldav/servizi'); serviziCervello = await chiedi('/cervello/servizi'); dati = await chiedi('/impostazioni'); riempi(); sincronizzaDopo(); await Promise.all([elenco(), posti(), vociRicarica()]); }
   catch (e) { avviso('Server non raggiungibile: ' + e.message, 8000); }
 })();
 </script>
