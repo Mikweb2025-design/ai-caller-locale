@@ -13,27 +13,41 @@ export function creaToccoTastiera({ volume = 0.025, casuale = Math.random } = {}
   const livello = limita(volume, 0, VOLUME_MASSIMO);
   if (livello === 0) return Buffer.alloc(0);
 
-  const tocchi = intero(2, 4, casuale);
+  // Una manciata di tasti, come si scrive: ritmo umano, mai perfettamente regolare.
+  const tasti = intero(2, 5, casuale);
   const partenze = [];
   let durataTotale = 0;
-  for (let n = 0; n < tocchi; n++) {
-    partenze.push(durataTotale);
-    const durata = intero(18, 28, casuale);
-    durataTotale += durata + (n + 1 < tocchi ? intero(38, 72, casuale) : 18);
+  for (let n = 0; n < tasti; n++) {
+    partenze.push({ inizio: durataTotale, forza: tra(0.65, 1, casuale) });
+    durataTotale += intero(90, 240, casuale);
   }
+  durataTotale += 60; // spazio per il rimbalzo dell'ultimo tasto
 
-  const pcm = Buffer.alloc(Math.ceil(durataTotale * SR / 1000) * 2);
-  for (const partenzaMs of partenze) {
-    const inizio = Math.floor(partenzaMs * SR / 1000);
-    const durata = intero(18, 28, casuale);
-    const campioni = Math.floor(durata * SR / 1000);
-    const frequenza = tra(1250, 2100, casuale);
-    for (let i = 0; i < campioni; i++) {
-      const inviluppo = Math.exp(-i / (SR * 0.0065));
-      const metallico = Math.sin(2 * Math.PI * frequenza * i / SR);
-      const fruscio = casuale() * 2 - 1;
-      const valore = Math.round(32767 * livello * inviluppo * (0.68 * metallico + 0.32 * fruscio));
-      pcm.writeInt16LE(limita(valore, -32768, 32767), (inizio + i) * 2);
+  const campioni = Math.ceil(durataTotale * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  const somma = (n, valore) => {
+    if (n < 0 || n >= campioni) return;
+    pcm.writeInt16LE(limita(pcm.readInt16LE(n * 2) + Math.round(valore), -32768, 32767), n * 2);
+  };
+  for (const { inizio, forza } of partenze) {
+    const i0 = Math.floor(inizio * SR / 1000);
+    // colpo d'urto: uno spike corto e ampio, come il contatto meccanico
+    somma(i0, (casuale() * 2 - 1) * 32767 * livello * forza * 2.2);
+    somma(i0 + 1, (casuale() * 2 - 1) * 32767 * livello * forza);
+    // corpo: la risonanza del meccanismo che muore in fretta
+    const frequenza = tra(1350, 2350, casuale);
+    const durata = intero(7, 14, casuale);
+    for (let i = 0; i < durata; i++) {
+      const inviluppo = Math.exp(-i * 3.2 / durata);
+      somma(i0 + i, Math.sin(2 * Math.PI * frequenza * i / SR) * 32767 * livello * forza * inviluppo * 0.9);
+    }
+    // il tasto che risale: clic più leggero e più acuto, un istante dopo
+    const risalita = i0 + intero(45, 95, casuale);
+    const frequenzaSu = tra(1800, 2900, casuale);
+    const durataSu = intero(4, 9, casuale);
+    for (let i = 0; i < durataSu; i++) {
+      const inviluppo = Math.exp(-i * 3 / durataSu);
+      somma(risalita + i, Math.sin(2 * Math.PI * frequenzaSu * i / SR) * 32767 * livello * forza * 0.45 * inviluppo);
     }
   }
   return aMulaw(pcm);
@@ -56,6 +70,44 @@ export function creaFruscioCarta({ volume = 0.025, casuale = Math.random } = {})
   return aMulaw(pcm);
 }
 
+// Aiuto comune: un clic meccanico con urto secco e corpo risonante; a volte doppio clic.
+function sintetizzaClic({ volume, casuale, minF, maxF, doppioProbabilita = 0 }) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  const distanza = doppioProbabilita && casuale() < doppioProbabilita ? intero(90, 160, casuale) : 0;
+  const campioni = Math.ceil((distanza + 40) * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  const somma = (n, valore) => {
+    if (n < 0 || n >= campioni) return;
+    pcm.writeInt16LE(limita(pcm.readInt16LE(n * 2) + Math.round(valore), -32768, 32767), n * 2);
+  };
+  const unClic = (inizioMs, forza) => {
+    const i0 = Math.floor(inizioMs * SR / 1000);
+    if (i0 >= campioni) return;
+    somma(i0, (casuale() * 2 - 1) * 32767 * livello * forza * 1.8);
+    if (i0 + 1 < campioni) somma(i0 + 1, (casuale() * 2 - 1) * 32767 * livello * forza);
+    const frequenza = tra(minF, maxF, casuale);
+    const durata = intero(4, 10, casuale);
+    for (let i = 0; i < durata; i++) {
+      const inviluppo = Math.exp(-i * 3.6 / durata);
+      somma(i0 + i, Math.sin(2 * Math.PI * frequenza * i / SR) * 32767 * livello * forza * inviluppo * 1.2);
+    }
+  };
+  unClic(0, 1);
+  if (distanza) unClic(distanza, tra(0.55, 0.85, casuale));
+  return aMulaw(pcm);
+}
+
+// Clic del mouse: un ticchettio asciutto e acuto; ogni tanto doppio clic.
+export function creaClicMouse(opzioni = {}) {
+  return sintetizzaClic({ minF: 2600, maxF: 3600, doppioProbabilita: 0.3, volume: 0.025, casuale: Math.random, ...opzioni });
+}
+
+// Clic di penna: più profondo e asciutto del mouse, sempre singolo.
+export function creaClicPenna(opzioni = {}) {
+  return sintetizzaClic({ minF: 900, maxF: 1400, volume: 0.025, casuale: Math.random, ...opzioni });
+}
+
 export function creaRumoreAttesa({
   invia,
   attivo = true,
@@ -70,9 +122,15 @@ export function creaRumoreAttesa({
   const leggiAttivo = typeof attivo === 'function' ? attivo : () => Boolean(attivo);
   const leggiVolume = typeof volume === 'function' ? volume : () => volume;
   const leggiTipo = typeof tipo === 'function' ? tipo : () => tipo;
-  const genera = (livello) => (leggiTipo() === 'ufficio' && casuale() < 0.25
-    ? creaFruscioCarta({ volume: livello, casuale })
-    : creaToccoTastiera({ volume: livello, casuale }));
+  // la miscela d'ufficio: per lo più tasti, poi carta, mouse e penna
+  const genera = (livello) => {
+    if (leggiTipo() !== 'ufficio') return creaToccoTastiera({ volume: livello, casuale });
+    const r = casuale();
+    if (r < 0.55) return creaToccoTastiera({ volume: livello, casuale });
+    if (r < 0.75) return creaFruscioCarta({ volume: livello, casuale });
+    if (r < 0.9) return creaClicMouse({ volume: livello, casuale });
+    return creaClicPenna({ volume: livello, casuale });
+  };
   let inCorso = false;
   let haInviato = false;
   let timer = null;
@@ -138,9 +196,12 @@ export function creaSuonoContinuo({
     pausa = Math.round(tra(700, 1400, casuale) * SR / 1000);
     const livello = limita(leggiVolume(), 0, VOLUME_MASSIMO);
     if (livello <= 0) return Buffer.alloc(0);
-    return leggiTipo() === 'ufficio' && casuale() < 0.25
-      ? creaFruscioCarta({ volume: livello, casuale })
-      : creaToccoTastiera({ volume: livello, casuale });
+    if (leggiTipo() !== 'ufficio') return creaToccoTastiera({ volume: livello, casuale });
+    const r = casuale();
+    if (r < 0.55) return creaToccoTastiera({ volume: livello, casuale });
+    if (r < 0.75) return creaFruscioCarta({ volume: livello, casuale });
+    if (r < 0.9) return creaClicMouse({ volume: livello, casuale });
+    return creaClicPenna({ volume: livello, casuale });
   };
 
   return {

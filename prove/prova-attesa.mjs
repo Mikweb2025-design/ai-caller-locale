@@ -7,6 +7,8 @@ import {
   creaRumoreAttesa,
   creaToccoTastiera,
   creaFruscioCarta,
+  creaClicMouse,
+  creaClicPenna,
   creaSuonoContinuo,
   mescolaSuono,
   fermaAttesaPrimaDellaVoce,
@@ -118,24 +120,35 @@ test('la configurazione disattiva e limita il volume non valido', () => {
   assert.deepEqual(esegui({ TASTIERA_ATTESA: '1', TASTIERA_VOLUME: 'non-numero' }), { attiva: true, volume: 0.025 });
 });
 
-test('tipo ufficio: a volte tocca un foglio di carta al posto dei tasti', () => {
+test('tipo ufficio: la miscela alterna tasti, carta, mouse e penna', () => {
   const timer = timerFinti();
   const inviati = [];
   const attesa = creaRumoreAttesa({
     invia: (audio) => inviati.push(audio),
     tipo: () => 'ufficio',
-    casuale: () => 0.1, // sempre sotto il 0.25: esce il fruscio di carta
+    casuale: () => 0.6, // 0.55–0.75: esce il fruscio di carta
     pianifica: timer.pianifica,
     annulla: timer.annulla,
   });
   assert.equal(attesa.avvia(), true);
   timer.esegui();
   assert.equal(inviati.length, 1);
-  const tocco = creaToccoTastiera({ volume: 0.025, casuale: () => 0.1 });
+  const tocco = creaToccoTastiera({ volume: 0.025, casuale: () => 0.6 });
   assert.equal(inviati[0].equals(tocco), false, 'il fruscio di carta non è un tocco di tastiera');
   assert.ok(inviati[0].some((x) => x !== 0xff), 'il fruscio non è silenzio');
   const rms = rmsPcm(daMulaw(inviati[0]));
   assert.ok(rms > 1 && rms < 500, `RMS del fruscio fuori soglia: ${rms}`);
+});
+
+test('tipo ufficio: ci sono anche il clic del mouse e il clic di penna', () => {
+  const mouse = creaClicMouse({ volume: 0.03, casuale: () => 0.1 });
+  const doppioMouse = creaClicMouse({ volume: 0.03, casuale: () => 0.2 }); // 0.2 < 0.3: doppio clic
+  const penna = creaClicPenna({ volume: 0.03, casuale: () => 0.5 });
+  for (const [nome, audio, minimo] of [['mouse', mouse, 8], ['doppio clic', doppioMouse, 260], ['penna', penna, 8]]) {
+    assert.ok(audio.some((x) => x !== 0xff), `il clic di ${nome} non è silenzio`);
+    assert.ok(audio.length >= minimo, `il clic di ${nome} è troppo corto`);
+  }
+  assert.ok(doppioMouse.length > mouse.length, 'il doppio clic dura di più del singolo');
 });
 
 test('volume zero e fruscio di carta: il generatore risponde alle regole del volume', () => {
@@ -309,6 +322,8 @@ async function scenario(nome, { web = false } = {}) {
     salutoCompleto: () => 'Buongiorno.',
     salutoSegmenti: () => [{ testo: 'Buongiorno.', lingua: 'it' }],
     creaRumoreAttesa: (opzioni) => creaTastieraFinta(controller)({ ...opzioni, attivo: web ? false : true }),
+    creaSuonoContinuo: () => ({ strappa: () => null }),
+    mescolaSuono: (voce) => voce,
   });
   await chiamata.alPartire();
   chiamata.azzera(); // il saluto non appartiene alla prova dell'attesa
