@@ -110,5 +110,31 @@ export async function cancellaEvento(conto, url) {
   await richiesta(conto, 'DELETE', url).catch((e) => { if (!/HTTP 404/.test(e.message)) throw e; });
 }
 
+// La cartella dei task (VTODO) del conto: per es. la lista "Attività" di Nextcloud. È una
+// collezione diversa da quella degli eventi, ma stesso server e stesse credenziali: la
+// ricavo dalla stessa home dei calendari. Se il server non ne ha una, restituisce null e
+// il task va nel calendario stesso (molti server accettano VTODO accanto a VEVENT).
+export async function cercaTaskCalendario(conto) {
+  let base = conto.url.trim();
+  const primoLivello = await richiesta(conto, 'PROPFIND', base, { corpo: PROP('<d:resourcetype/><d:current-user-principal/><c:calendar-home-set/>'), profondita: 0 });
+  base = primoLivello.url || base;
+  let casa = primo(primoLivello.testo, 'calendar-home-set');
+  if (!casa) {
+    const principalXml = primo(primoLivello.testo, 'current-user-principal');
+    if (!principalXml) return null;
+    const principal = assoluto(base, href(principalXml));
+    const p = await richiesta(conto, 'PROPFIND', principal, { corpo: PROP('<c:calendar-home-set/>'), profondita: 0 });
+    casa = primo(p.testo, 'calendar-home-set');
+    base = principal;
+  }
+  const home = assoluto(base, href(casa));
+  const elenco = await richiesta(conto, 'PROPFIND', home, { corpo: PROP('<d:resourcetype/><d:displayname/><c:supported-calendar-component-set/>'), profondita: 1 });
+  const lista = tutti(elenco.testo, 'response')
+    .filter((r) => /<(?:[\w-]+:)?calendar\b/i.test(primo(r, 'resourcetype') || ''))
+    .filter((r) => { const comp = primo(r, 'supported-calendar-component-set'); return comp && /VTODO/i.test(comp) && !/VEVENT/i.test(comp); })
+    .map((r) => ({ url: assoluto(home, href(r)), nome: decodeXml(primo(r, 'displayname') || href(r)).trim() }));
+  return lista[0] || null;
+}
+
 export const eventoNostro = (uid) => String(uid || '').endsWith(UID_NOSTRO);
 export const uidNostro = (id) => `${id}${UID_NOSTRO}`;

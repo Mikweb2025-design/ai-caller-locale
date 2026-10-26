@@ -7,7 +7,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { impostazioni, fasce, GIORNI, CARTELLA_DATI, proteggi } from './impostazioni.mjs';
 import { recupera } from './rete.mjs';
-import { leggiEventi, salvaEvento, cancellaEvento, eventoNostro } from './caldav.mjs';
+import { leggiEventi, salvaEvento, cancellaEvento, eventoNostro, cercaTaskCalendario } from './caldav.mjs';
 import { urlPubblico } from './twilio.mjs';
 
 const FILE = join(CARTELLA_DATI, 'appuntamenti.json');
@@ -52,7 +52,8 @@ export async function annulla(id) {
   if (!a) return null;
   a.stato = 'annullato';
   salva(lista);
-  await sincronizza(a);
+  if (a.tipo === 'richiamo') await sincronizzaTask(a);
+  else await sincronizza(a);
   return a;
 }
 
@@ -241,17 +242,66 @@ export async function aggiungiRichiamo({ nome, motivo, telefono = '', canale = '
   const lista = appuntamenti();
   lista.push(r);
   salva(lista);
+  // il task su calendario non deve rallentare la chiamata: parte in parallelo
+  sincronizzaTask(r).catch(() => {});
   return r;
 }
 
-export async function aggiornaRichiamo(id, { nome = '', motivo = '' } = {}) {
+export async function aggiornaRichiamo(id, { nome = '', motivo = '', telefono = '' } = {}) {
   const lista = appuntamenti();
   const r = lista.find((x) => x.id === id);
   if (!r || r.tipo !== 'richiamo') return null;
   if (nome.trim() && nome.trim() !== 'non detto') r.nome = nome.trim();
   if (motivo.trim()) r.motivo = motivo.trim();
+  const tel = String(telefono || '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+  if (tel.length >= 6) r.telefono = tel;
   salva(lista);
   return r;
+}
+
+// --- richiami come task (VTODO) su calendario CalDAV ---
+// Il richiamo locale resta l'autorità: su calendario va una copia come task, così il titolare
+// lo vede anche nell'app Attività di Nextcloud. La cartella dei task (per es. "Attività") è
+// diversa da quella degli eventi, ma stesso server e stesse credenziali: la cerco una volta.
+const tasche = new Map(); // conto.id → URL della cartella dei task
+const quandoTask = new Map(); // conto.id → quando la ricerca è fallita l'ultima volta (niente loop)
+
+function icsTask(r) {
+  const completato = r.stato === 'richiamato';
+  const righe = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ai-caller-locale//IT', 'CALSCALE:GREGORIAN',
+    'BEGIN:VTODO', `UID:${r.id}@ai-caller-locale`, `DTSTAMP:${dataIcs(new Date())}`,
+    `SUMMARY:${testoIcs(`📞 Richiamare ${r.nome}`)}`,
+    `DESCRIPTION:${testoIcs(`${r.motivo || '-'}\nTelefono: ${r.telefono || '-'}\nCanale: ${r.canale || '-'}\nRichiesto il ${String(r.creato).slice(0, 16).replace('T', ' ')}`)}`,
+    completato ? `STATUS:COMPLETED` : 'STATUS:NEEDS-ACTION',
+    completato ? `COMPLETED:${dataIcs(new Date(r.fatto || Date.now()))}` : null,
+    'END:VTODO', 'END:VCALENDAR'];
+  return righe.filter(Boolean).join('\r\n') + '\r\n';
+}
+
+export async function sincronizzaTask(r) {
+  const errori = [];
+  r.task ||= {};
+  for (const c of conti().filter((x) => x.scrivi)) {
+    const conto = { ...c, url: c.calendario };
+    try {
+      if (!tasche.has(c.id) && Date.now() - (quandoTask.get(c.id) || 0) > 60000) {
+        try { tasche.set(c.id, (await cercaTaskCalendario(conto))?.url || c.calendario); }
+        catch { quandoTask.set(c.id, Date.now()); tasche.set(c.id, c.calendario); }
+      }
+      const tasca = tasche.get(c.id) || c.calendario;
+      if (r.stato === 'annullato') {
+        if (r.task[c.id]) { await cancellaEvento(conto, r.task[c.id]); delete r.task[c.id]; }
+      } else {
+        const ics = icsTask(r);
+        r.task[c.id] = await salvaEvento(conto, tasca, { uid: `${r.id}@ai-caller-locale`, ics, hrefEsistente: r.task[c.id] });
+      }
+    } catch (e) { errori.push(`${c.nome || c.url}: ${e.message}`); }
+  }
+  const lista = appuntamenti();
+  const i = lista.findIndex((x) => x.id === r.id);
+  if (i >= 0) { lista[i] = r; salva(lista); }
+  if (errori.length) console.warn('⚠️ task del richiamo non aggiornato:', errori.join('; '));
+  return errori;
 }
 
 export async function richiamoFatto(id) {
@@ -261,6 +311,7 @@ export async function richiamoFatto(id) {
   r.stato = 'richiamato';
   r.fatto = new Date().toISOString();
   salva(lista);
+  await sincronizzaTask(r);
   return r;
 }
 
