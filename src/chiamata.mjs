@@ -11,7 +11,7 @@ import { numeriInParole, punteggiaturaDaVoce } from './parlato.mjs';
 import { creaRegolatoreIntercalari } from './intercalari.mjs';
 import { impostazioni } from './impostazioni.mjs';
 import { estraiIntento, regoleCandidate } from './intenti.mjs';
-import { daMulaw, trascrivi, pronuncia, frasePronta } from './voce.mjs';
+import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta } from './voce.mjs';
 import { creaRumoreAttesa, fermaAttesaPrimaDellaVoce } from './attesa.mjs';
 
 const FRAME_MS = 20;
@@ -98,6 +98,9 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   const trascriviAudio = dipendenze.trascrivi || trascrivi;
   const pronunciaTesto = dipendenze.pronuncia || pronuncia;
   const fraseInCache = dipendenze.frasePronta || frasePronta;
+  // prove con la voce finta: se il saluto è iniettato, il percorso resta quello atteso dai test
+  const salutoPronto = dipendenze.frasePronta ? null : (dipendenze.fraseSubito || fraseSubito);
+  const salutoInDiretta = dipendenze.frasePronta ? null : (dipendenze.fraseInDiretta || fraseInDiretta);
   const prepara = dipendenze.preparaCervello || preparaCervello;
   const salutoIntero = dipendenze.salutoCompleto || salutoCompleto;
   const segmentiSaluto = dipendenze.salutoSegmenti || salutoSegmenti;
@@ -442,9 +445,30 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     testo('receptionist', s);
     logFrase('🤖', s);
     const t = Date.now();
-    const audio = Buffer.concat(await Promise.all(segmentiSaluto().map((x) => fraseInCache(x.testo, x.lingua))));
-    chiamata.log(`⏱ saluto pronto in ${Date.now() - t} ms`);
-    inviaAudio(audio);
+    let primo = true;
+    const annuncia = (quando, testoLog) => { if (primo) chiamata.log(`⏱ ${testoLog} in ${quando} ms`); primo = false; };
+    if (!salutoPronto) {
+      // prove con la voce finta: si aspetta l'audio iniettato, come prima
+      const audio = Buffer.concat(await Promise.all(segmentiSaluto().map((x) => fraseInCache(x.testo, x.lingua))));
+      chiamata.log(`⏱ saluto pronto in ${Date.now() - t} ms`);
+      inviaAudio(audio);
+    } else {
+      for (const x of segmentiSaluto()) {
+        if (chiamata.chiusa) break;
+        const pronto = salutoPronto(x.testo, x.lingua);
+        if (pronto) {
+          annuncia(Date.now() - t, 'saluto pronto');
+          inviaAudio(pronto);
+          continue;
+        }
+        // saluto mai sintetizzato (primo avvio o testo appena cambiato): si trasmette mentre arriva
+        await salutoInDiretta(x.testo, x.lingua, (p) => {
+          annuncia(Date.now() - t, 'saluto in diretta');
+          inviaAudio(p);
+        });
+        fraseInCache(x.testo, x.lingua).catch(() => {}); // versione verificata, pronta per la prossima chiamata
+      }
+    }
     await attendiCervello();
     if (chiamata.chiusa) cervello.chiudi();
   };

@@ -52,29 +52,55 @@ class RallentatoreNaturale {
 
 class LivellatoreNaturale {
   constructor(sr = SR) {
-    this.inviluppo = 0;
+    this.media = 0;
     this.guadagno = 1;
-    this.attaccoInviluppo = 1 - Math.exp(-1 / (0.02 * sr));
-    this.rilascioInviluppo = 1 - Math.exp(-1 / (0.25 * sr));
-    this.attaccoGuadagno = 1 - Math.exp(-1 / (0.035 * sr));
-    this.rilascioGuadagno = 1 - Math.exp(-1 / (0.35 * sr));
+    this.target = 2800; // energia media delle frasi: una voce al telefono si sente senza dover alzare il volume
+    this.minimo = 0.5;
+    this.massimo = 2.0;
+    this.finestra = 1 - Math.exp(-1 / (0.5 * sr)); // 0,5 s: segue il volume della frase, non le singole sillabe
+    this.attaccoGuadagno = 1 - Math.exp(-1 / (0.06 * sr));
+    this.rilascioGuadagno = 1 - Math.exp(-1 / (0.3 * sr));
   }
 
   applica(pcm) {
     const uscita = Buffer.allocUnsafe(pcm.length);
+    const tetto = 0.94 * 32767;
     for (let i = 0; i + 1 < pcm.length; i += 2) {
       const x = pcm.readInt16LE(i);
-      const energia = x * x;
-      const coefficiente = energia > this.inviluppo ? this.attaccoInviluppo : this.rilascioInviluppo;
-      this.inviluppo += (energia - this.inviluppo) * coefficiente;
-      const livello = Math.sqrt(Math.max(1, this.inviluppo));
-      const desiderato = livello < 350 ? this.guadagno : Math.max(0.35, Math.min(1.22, 2700 / livello));
+      this.media += (x * x - this.media) * this.finestra;
+      const livello = Math.sqrt(Math.max(1, this.media));
+      const desiderato = livello < 300 ? this.guadagno : Math.max(this.minimo, Math.min(this.massimo, this.target / livello));
       const velocita = desiderato < this.guadagno ? this.attaccoGuadagno : this.rilascioGuadagno;
       this.guadagno += (desiderato - this.guadagno) * velocita;
-      uscita.writeInt16LE(limita16(x * this.guadagno), i);
+      let y = x * this.guadagno;
+      // oltre il tetto si comprime dolcemente: niente distorsione se una sillaba è più forte
+      if (y > tetto) y = tetto + (y - tetto) * 0.1;
+      else if (y < -tetto) y = -tetto + (y + tetto) * 0.1;
+      uscita.writeInt16LE(limita16(y), i);
     }
     return uscita;
   }
+}
+
+// Campana (peaking EQ): colpisce solo la banda attorno a frequenza, lasciando il resto com'è.
+function campana(frequenza, q, db, sr = SR) {
+  const a = 10 ** (db / 40);
+  const w = 2 * Math.PI * frequenza / sr;
+  const alfa = Math.sin(w) / (2 * q);
+  const c = Math.cos(w);
+  const b0 = 1 + alfa * a, b1 = -2 * c, b2 = 1 - alfa * a;
+  const a0 = 1 + alfa / a, a1 = -2 * c, a2 = 1 - alfa / a;
+  return new Biquad({ b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 });
+}
+
+// Passa-basso: toglie il bordo del vocoder sopra la banda utile della voce.
+function passaBasso(frequenza, q = Math.SQRT1_2, sr = SR) {
+  const w = 2 * Math.PI * frequenza / sr;
+  const alfa = Math.sin(w) / (2 * q);
+  const c = Math.cos(w);
+  const b0 = (1 - c) / 2, b1 = 1 - c, b2 = (1 - c) / 2;
+  const a0 = 1 + alfa, a1 = -2 * c, a2 = 1 - alfa;
+  return new Biquad({ b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 });
 }
 
 function scaffale(tipo, frequenza, db, pendenza = 0.8, sr = SR) {
@@ -104,24 +130,29 @@ function scaffale(tipo, frequenza, db, pendenza = 0.8, sr = SR) {
 
 const limita16 = (n) => Math.max(-32768, Math.min(32767, Math.round(n)));
 
+export const VERSIONE_TIMBRO = '3';
+
 export function creaAddolcitoreVoce(campione, sr = SR) {
-  // Taratura dedicata alla voce scelta da Lasercamp: piu corpo, meno energia
-  // squillante tra 2 e 4 kHz e cadenza appena piu calma (-3,4% circa).
-  // L'intervento resta sotto un semitono, quindi l'identita non cambia.
-  if (campione !== 'voce-f-2.wav') return { applica: (pcm) => pcm };
-  const filtri = [scaffale('basso', 400, 1.0, 0.75, sr), scaffale('alto', 1800, -4.5, 0.75, sr)];
+  // Catena telefonica: non cambia chi è la voce, toglie solo quello che al telefono
+  // fa "squillare" una voce sintetica, cioè il picco nasale attorno a 1,6 kHz, la
+  // punta del vocoder a 3 kHz e il bordo oltre i 3,4 kHz. Il corpo (300-800 Hz) resta.
+  const filtri = [
+    campana(1600, 0.75, -4.5, sr),
+    campana(3050, 1.15, -2.5, sr),
+    scaffale('basso', 360, 0.5, 0.8, sr),
+    passaBasso(3600, Math.SQRT1_2, sr),
+  ];
   const rallentatore = new RallentatoreNaturale(1.035);
   const livellatore = new LivellatoreNaturale(sr);
   return {
     applica(pcm) {
-      const livellato = livellatore.applica(pcm);
-      const equalizzato = Buffer.allocUnsafe(livellato.length);
-      for (let i = 0; i + 1 < livellato.length; i += 2) {
-        let valore = livellato.readInt16LE(i);
+      const equalizzato = Buffer.allocUnsafe(pcm.length);
+      for (let i = 0; i + 1 < pcm.length; i += 2) {
+        let valore = pcm.readInt16LE(i);
         for (const filtro of filtri) valore = filtro.passa(valore);
         equalizzato.writeInt16LE(limita16(valore), i);
       }
-      return rallentatore.applica(equalizzato);
+      return rallentatore.applica(livellatore.applica(equalizzato));
     },
   };
 }

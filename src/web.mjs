@@ -147,7 +147,7 @@ export function paginaWeb({ ws, admin, avatar }) {
 <script>
 const WS_PATH = ${JSON.stringify(ws)};
 const $ = (id) => document.getElementById(id);
-let ws, ctx, sorgente, nodo, monitor, flusso, prossimo = 0, attivi = [], marche = [], muto = false;
+let ws, ctx, sorgente, nodo, monitor, filtroVoce, flusso, prossimo = 0, attivi = [], marche = [], muto = false;
 const streamSid = 'MZweb' + Math.random().toString(16).slice(2);
 const ios = /iP(?:hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -181,7 +181,7 @@ function suona(payload) {
     d[i] = a + (b - a) * fr;
   }
   const s = ctx.createBufferSource();
-  s.buffer = buf; s.connect(ctx.destination);
+  s.buffer = buf; s.connect(filtroVoce);
   // Safari mobile ha più jitter: accumula un piccolo margine solo quando la coda è vuota.
   if (prossimo < ctx.currentTime + 0.01) prossimo = ctx.currentTime + (ios ? 0.09 : 0.05);
   s.start(prossimo);
@@ -212,6 +212,19 @@ async function chiama() {
   // iOS ignora sampleRate:8000; si usa il rate nativo e il worklet ricampiona a 8 kHz.
   ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
   if (ctx.state === 'suspended') { try { await ctx.resume(); } catch {} }
+  // L'audio arriva a 8 kHz e qui viene alzato al rate del dispositivo con interpolazione
+  // lineare: sopra i 4 kHz restano "immagini" che fanno sibilare la voce. Due passa-basso
+  // in cascata (Linkwitz-Riley a 3,4 kHz) le tolgono prima delle casse.
+  filtroVoce = ctx.createBiquadFilter();
+  filtroVoce.type = 'lowpass';
+  filtroVoce.frequency.value = Math.min(3400, ctx.sampleRate * 0.45);
+  filtroVoce.Q.value = 0.54;
+  const filtroVoce2 = ctx.createBiquadFilter();
+  filtroVoce2.type = 'lowpass';
+  filtroVoce2.frequency.value = filtroVoce.frequency.value;
+  filtroVoce2.Q.value = 1.3;
+  filtroVoce.connect(filtroVoce2);
+  filtroVoce2.connect(ctx.destination);
   let senzaMicrofono = false;
   stato('consenti l\u2019uso del microfono…');
   try {
