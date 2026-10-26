@@ -98,9 +98,10 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   const trascriviAudio = dipendenze.trascrivi || trascrivi;
   const pronunciaTesto = dipendenze.pronuncia || pronuncia;
   const fraseInCache = dipendenze.frasePronta || frasePronta;
-  // prove con la voce finta: se il saluto è iniettato, il percorso resta quello atteso dai test
-  const salutoPronto = dipendenze.frasePronta ? null : (dipendenze.fraseSubito || fraseSubito);
-  const salutoInDiretta = dipendenze.frasePronta ? null : (dipendenze.fraseInDiretta || fraseInDiretta);
+  // prove con la voce finta: se è iniettata solo frasePronta, il saluto resta quello atteso dai test
+  const salutoIniettato = Boolean(dipendenze.frasePronta) && !dipendenze.fraseSubito && !dipendenze.fraseInDiretta;
+  const salutoPronto = salutoIniettato ? null : (dipendenze.fraseSubito || fraseSubito);
+  const salutoInDiretta = salutoIniettato ? null : (dipendenze.fraseInDiretta || fraseInDiretta);
   const prepara = dipendenze.preparaCervello || preparaCervello;
   const salutoIntero = dipendenze.salutoCompleto || salutoCompleto;
   const segmentiSaluto = dipendenze.salutoSegmenti || salutoSegmenti;
