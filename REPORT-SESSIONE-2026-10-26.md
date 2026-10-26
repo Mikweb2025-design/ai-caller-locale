@@ -17,11 +17,20 @@ Maria è attiva con un motore vocale più resiliente dopo inattività, rumore le
 
 ## 2. Velocità e feedback durante l'attesa
 
-- Aggiunto `src/attesa.mjs`: genera tocchi di tastiera bassi, brevi e irregolari mentre Maria trascrive o prepara la risposta.
-- Il rumore viene inviato soltanto al chiamante, non entra nel riconoscimento vocale, non parte nella chat scritta e viene cancellato prima della voce o quando il cliente interrompe.
+- Aggiunto `src/attesa.mjs`: genera tocchi di tastiera bassi, brevi e irregolari mentre Maria trascrive o prepara la risposta nelle telefonate Twilio.
+- Il rumore viene inviato soltanto al chiamante, non entra nel riconoscimento vocale e viene cancellato prima della voce o quando il cliente interrompe. Nel browser mobile è disattivato perché su iPhone poteva sembrare un crepitio.
 - Il volume è limitato a `0`–`0.04` per non attivare il VAD. Nell'istanza attiva è stato impostato a `0.035`.
 - Nuove variabili: `TASTIERA_ATTESA` e `TASTIERA_VOLUME`.
 - Latenze osservate nelle prove reali finali: primo testo AI circa 0,4–0,7 secondi; primo audio complessivo circa 1,0–1,9 secondi nei percorsi provati.
+
+### Correzione audio iPhone/iPad
+
+- Corretto il difetto principale: Safari ignorava `sampleRate: 8000` e forniva il microfono a 44,1/48 kHz, mentre il vecchio worklet inviava ogni 160 campioni come se fossero 20 ms. A 48 kHz produceva circa sei volte troppi frame, con voce rallentata, distorta e rumori.
+- Nuovo `src/audio-browser.mjs`: filtro passa-basso anti-alias e ricampionamento streaming dal rate hardware a 8 kHz, sempre 50 frame al secondo da 160 campioni.
+- Il worklet è collegato a un'uscita silenziosa per evitare che WebKit sospenda il grafo audio.
+- Disattivato il guadagno automatico del microfono; restano cancellazione eco e riduzione rumore.
+- Tolte le dissolvenze ripetute su ogni pacchetto riprodotto, che potevano creare tremolio; aggiunto un buffer iniziale anti-jitter di 90 ms su iOS.
+- AudioContext ripreso automaticamente dopo ritorno da standby, cambio app o `pageshow`.
 
 ## 3. Riconoscimento automatico delle richieste
 
@@ -88,6 +97,7 @@ La vecchia istruzione attiva “in entrambi i casi proponi un appuntamento” è
 - `node --test prove/prova-instradamento.mjs prove/prova-attesa.mjs`
 - `node prove/prova-prenotazione-atomica.mjs`
 - `node prove/prova-log-privacy.mjs`
+- `node prove/prova-audio-ios.mjs`
 - `node prove/prova-email.mjs`
 - `node prove/prova-intercalari.mjs`
 - `node prove/prova-parlato.mjs`
@@ -113,11 +123,11 @@ La vecchia istruzione attiva “in entrambi i casi proponi un appuntamento” è
 ## 10. File principali modificati
 
 - Motore/resilienza: `motore/motore.py`, `.env.example`.
-- Attesa naturale: `src/attesa.mjs`, `src/config.mjs`, `src/chiamata.mjs`.
+- Attesa naturale e audio mobile: `src/attesa.mjs`, `src/audio-browser.mjs`, `src/config.mjs`, `src/chiamata.mjs`, `src/web.mjs`.
 - Intenti/admin: `src/intenti.mjs`, `src/admin.mjs`, `src/impostazioni.mjs`, `src/persona.mjs`, `src/consenso.mjs`.
 - Agenda/sicurezza/privacy: `src/agenda.mjs`, `src/server.mjs`, `src/strumenti.mjs`, `src/twilio-stream.mjs`.
 - Documentazione: `GUIDA-TECNICA.md`, questo report.
-- Test nuovi: `prove/prova-attesa.mjs`, `prove/prova-intenti.mjs`, `prove/prova-admin-intenti.mjs`, `prove/prova-instradamento.mjs`, `prove/prova-motore-keepwarm.py`, `prove/prova-prenotazione-atomica.mjs`.
+- Test nuovi: `prove/prova-attesa.mjs`, `prove/prova-audio-ios.mjs`, `prove/prova-intenti.mjs`, `prove/prova-admin-intenti.mjs`, `prove/prova-instradamento.mjs`, `prove/prova-motore-keepwarm.py`, `prove/prova-prenotazione-atomica.mjs`.
 
 ## 11. Come continuare
 

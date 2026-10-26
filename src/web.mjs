@@ -3,6 +3,7 @@
 // In più riceve la trascrizione e si può scrivere al receptionist come in una chat.
 import { impostazioni } from './impostazioni.mjs';
 import { temaCss, tagLogo } from './design.mjs';
+import { codiceCatturaBrowser } from './audio-browser.mjs';
 
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
@@ -146,8 +147,9 @@ export function paginaWeb({ ws, admin, avatar }) {
 <script>
 const WS_PATH = ${JSON.stringify(ws)};
 const $ = (id) => document.getElementById(id);
-let ws, ctx, sorgente, nodo, flusso, prossimo = 0, attivi = [], marche = [], muto = false;
+let ws, ctx, sorgente, nodo, monitor, flusso, prossimo = 0, attivi = [], marche = [], muto = false;
 const streamSid = 'MZweb' + Math.random().toString(16).slice(2);
+const ios = /iP(?:hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 // μ-law G.711
 const DEC = new Float32Array(256);
@@ -178,12 +180,10 @@ function suona(payload) {
     const a = DEC[raw.charCodeAt(j)] ?? 0, b = j + 1 < n ? DEC[raw.charCodeAt(j + 1)] : a;
     d[i] = a + (b - a) * fr;
   }
-  // dissolvenze di 1 ms in coda e in testa: niente click tra un pezzo e l'altro
-  const sv = Math.min(48, nSu >> 3);
-  for (let k = 0; k < sv; k++) { d[k] *= k / sv; d[nSu - 1 - k] *= k / sv; }
   const s = ctx.createBufferSource();
   s.buffer = buf; s.connect(ctx.destination);
-  prossimo = Math.max(prossimo, ctx.currentTime + 0.03);
+  // Safari mobile ha più jitter: accumula un piccolo margine solo quando la coda è vuota.
+  if (prossimo < ctx.currentTime + 0.01) prossimo = ctx.currentTime + (ios ? 0.09 : 0.05);
   s.start(prossimo);
   prossimo += buf.duration;
   attivi.push(s);
@@ -209,33 +209,33 @@ function svuota() {
 async function chiama() {
   $('chiama').disabled = true;
   stato('collegamento…');
-  ctx = new AudioContext({ sampleRate: 8000 });
+  // iOS ignora sampleRate:8000; si usa il rate nativo e il worklet ricampiona a 8 kHz.
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
   if (ctx.state === 'suspended') { try { await ctx.resume(); } catch {} }
   let senzaMicrofono = false;
   stato('consenti l\u2019uso del microfono…');
   try {
-    flusso = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    flusso = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: { ideal: true }, noiseSuppression: { ideal: true }, autoGainControl: { ideal: false }, channelCount: { ideal: 1 } } });
   } catch (e) {
     // senza microfono la chiamata va lo stesso: si ascolta e si scrive in chat
     senzaMicrofono = true;
     flusso = new MediaStream([ctx.createMediaStreamDestination().stream.getAudioTracks()[0]]);
   }
-  const codice = \`class Cattura extends AudioWorkletProcessor {
-    constructor() { super(); this.b = new Float32Array(160); this.i = 0; }
-    process(ing) { const c = ing[0][0]; if (c) for (const v of c) { this.b[this.i++] = v; if (this.i === 160) { this.port.postMessage(this.b.slice()); this.i = 0; } } return true; }
-  }
-  registerProcessor('cattura', Cattura);\`;
-  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([codice], { type: 'application/javascript' })));
+  const codice = ${JSON.stringify(codiceCatturaBrowser())};
+  const indirizzoWorklet = URL.createObjectURL(new Blob([codice], { type: 'application/javascript' }));
+  try { await ctx.audioWorklet.addModule(indirizzoWorklet); } finally { URL.revokeObjectURL(indirizzoWorklet); }
   sorgente = ctx.createMediaStreamSource(flusso);
   nodo = new AudioWorkletNode(ctx, 'cattura');
   sorgente.connect(nodo);
+  // Mantiene vivo il worklet anche su Safari; gain zero evita di rimandare il microfono in cuffia.
+  monitor = ctx.createGain(); monitor.gain.value = 0; nodo.connect(monitor); monitor.connect(ctx.destination);
 
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + WS_PATH);
   let tick = 0;
   ws.onopen = () => {
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     invia({ event: 'connected', protocol: 'Call', version: '1.0.0' });
-    invia({ event: 'start', streamSid, start: { streamSid, callSid: 'CAweb' + Date.now(), customParameters: { from: 'browser' }, mediaFormat: { encoding: 'audio/x-mulaw', sampleRate: 8000, channels: 1 } } });
+    invia({ event: 'start', streamSid, start: { streamSid, callSid: 'CAweb' + Date.now(), customParameters: { from: 'browser', client: ios ? 'ios' : 'browser' }, mediaFormat: { encoding: 'audio/x-mulaw', sampleRate: 8000, channels: 1 } } });
     nodo.port.onmessage = ({ data }) => {
       let e = 0; const u = new Uint8Array(160);
       for (let i = 0; i < 160; i++) { const v = muto ? 0 : data[i]; u[i] = enc(v); e += v * v; }
@@ -264,8 +264,8 @@ async function chiama() {
 
 function chiudi() {
   try { invia({ event: 'stop', streamSid }); ws?.close(); } catch {}
-  nodo?.disconnect(); sorgente?.disconnect(); flusso?.getTracks().forEach((t) => t.stop()); ctx?.close();
-  ws = ctx = null; prossimo = 0; attivi = []; marche.forEach((m) => clearTimeout(m.t)); marche = [];
+  nodo?.disconnect(); monitor?.disconnect(); sorgente?.disconnect(); flusso?.getTracks().forEach((t) => t.stop()); ctx?.close();
+  ws = ctx = monitor = null; prossimo = 0; attivi = []; marche.forEach((m) => clearTimeout(m.t)); marche = [];
   document.body.classList.remove('chiamata-attiva');
   $('chiama').textContent = 'Inizia la chiamata'; $('chiama').className = ''; $('chiama').disabled = false;
   $('muto').disabled = $('frase').disabled = $('invia').disabled = true;
@@ -276,6 +276,9 @@ function chiudi() {
 $('chiama').onclick = () => (ws ? chiudi() : chiama());
 $('muto').onclick = () => { muto = !muto; $('muto').textContent = muto ? 'Microfono spento' : 'Microfono acceso'; };
 $('scrivi').onsubmit = (e) => { e.preventDefault(); const t = $('frase').value.trim(); if (!t) return; invia({ event: 'testo', testo: t }); $('frase').value = ''; };
+const riprendiAudio = () => { if (ctx?.state === 'suspended') ctx.resume().catch(() => {}); };
+document.addEventListener('visibilitychange', () => { if (!document.hidden) riprendiAudio(); });
+window.addEventListener('pageshow', riprendiAudio);
 </script>
 </body></html>`;
 }

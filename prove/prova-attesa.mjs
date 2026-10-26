@@ -155,13 +155,14 @@ function creaChiamataFinta(nome) {
 }
 
 function creaTastieraFinta(contenitore) {
-  return ({ invia }) => {
+  return ({ invia, attivo }) => {
+    const abilitato = attivo !== false;
     let inCorso = false, inviato = false;
     const controller = {
       get inCorso() { return inCorso; },
       get haInviato() { return inviato; },
       avvia() {
-        if (inCorso) return false;
+        if (!abilitato || inCorso) return false;
         inCorso = true;
         inviato = true;
         invia(AUDIO_TASTIERA);
@@ -200,8 +201,9 @@ async function attendi(condizione, messaggio) {
   assert.fail(messaggio);
 }
 
-async function scenario(nome) {
+async function scenario(nome, { web = false } = {}) {
   const chiamata = creaChiamataFinta(nome);
+  chiamata.web = web;
   const cervello = creaCervelloFinto();
   const controller = [];
   gestisciChiamata(chiamata, {
@@ -264,5 +266,14 @@ test('integrazione: la chat scritta non avvia la tastiera', async () => {
   assert.equal(controller.inCorso, false);
   assert.equal(chiamata.eventi.some((x) => x.tipo === 'media' && x.audio.equals(AUDIO_TASTIERA)), false);
   assert.equal(chiamata.eventi.some((x) => x.tipo === 'mark'), false);
+  await chiamata.allaFine();
+});
+
+test('integrazione: la chiamata vocale dal browser non riceve rumori artificiali', async () => {
+  const { chiamata, cervello, controller } = await scenario('browser-mobile', { web: true });
+  completaFraseVocale(chiamata);
+  await attendi(() => cervello.richieste.length === 1, 'la frase browser non e arrivata al cervello');
+  assert.equal(controller.inCorso, false);
+  assert.equal(chiamata.eventi.some((x) => x.tipo === 'media' && x.audio.equals(AUDIO_TASTIERA)), false);
   await chiamata.allaFine();
 });

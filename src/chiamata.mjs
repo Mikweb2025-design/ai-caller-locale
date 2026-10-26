@@ -142,7 +142,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
   const ritardi = [];
   const tastiera = creaTastiera({
-    attivo: CONFIG.tastiera.attiva,
+    // Nel browser mobile i tocchi compressi possono sembrare crepitii: restano solo sul telefono Twilio.
+    attivo: CONFIG.tastiera.attiva && !chiamata.web,
     volume: CONFIG.tastiera.volume,
     // Audio raw: niente mark e niente inviaAudio(), quindi non altera latenza o stato parlante.
     invia: (mulaw) => chiamata.inviaAudio(mulaw.toString('base64')),
