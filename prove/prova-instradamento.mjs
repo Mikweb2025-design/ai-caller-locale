@@ -126,6 +126,22 @@ test('l’opzione scherza richiede di riconoscere semanticamente il gioco e rica
   assert.match(prompt, /risatina scritta "eh eh".*umorismo evidente/is);
 });
 
+test('chiamata dal browser: il prompt dice che il numero non è noto e va chiesto', () => {
+  const prompt = istruzioni({ chiamante: 'browser', posti: '- martedì 27 ottobre 2026 (2026-10-27): 09:00' });
+  assert.match(prompt, /Il numero del cliente NON lo hai/);
+  assert.match(prompt, /a che numero la possiamo richiamare/);
+  assert.match(prompt, /quarto campo/);
+  assert.match(prompt, /non insistere: ammettilo e chiediglolo/);
+  assert.doesNotMatch(prompt, /lo hai già/);
+});
+
+test('chiamata con numero noto: il prompt non lo fa chiedere', () => {
+  const prompt = istruzioni({ chiamante: '+393331234567', posti: '- martedì 27 ottobre 2026 (2026-10-27): 09:00' });
+  assert.match(prompt, /lo hai già \(\+393331234567\)/);
+  assert.match(prompt, /senza chiederglielo/);
+  assert.doesNotMatch(prompt, /NON lo hai/);
+});
+
 test('informazioni e preventivi non possono creare appuntamenti dal solo marker azione', async () => {
   const s = await scenario();
   await s.chiamata.alTestoScritto('Quali sono i vostri orari?');
