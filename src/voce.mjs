@@ -61,6 +61,9 @@ export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it' }
     resto = b.subarray(pari);
     if (pari) alPezzo(aMulaw(addolcitore.applica(b.subarray(0, pari))));
   }
+  // coda dell'abbassamento di tono: senza questo l'ultima consonante si sente troncata
+  const coda = addolcitore.chiudi ? addolcitore.chiudi() : null;
+  if (coda && coda.length) alPezzo(aMulaw(coda));
 }
 
 // Frasi fisse (saluto, riempitivo): sintetizzate una volta sola, tenute in memoria e su disco.
