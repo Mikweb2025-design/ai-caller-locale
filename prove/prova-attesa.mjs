@@ -233,7 +233,8 @@ test('integrazione vocale: media raw, clear prima della voce e latenza non falsa
   cervello.rispondi();
   await attendi(() => chiamata.eventi.some((x) => x.tipo === 'media' && x.audio.equals(AUDIO_VOCE)), 'Maria non ha parlato');
   const voce = chiamata.eventi.findIndex((x) => x.tipo === 'media' && x.audio.equals(AUDIO_VOCE));
-  assert.equal(chiamata.eventi[voce - 1]?.tipo, 'clear', 'il buffer tastiera va cancellato subito prima della voce');
+  assert.equal(chiamata.eventi[voce - 1]?.tipo, 'media', 'prima della voce va il silenzio protettivo della risposta');
+  assert.equal(chiamata.eventi[voce - 2]?.tipo, 'clear', 'il buffer tastiera va cancellato subito prima della voce');
   assert.equal(chiamata.eventi.slice(0, voce).some((x) => x.tipo === 'mark'), false);
   assert.equal(chiamata.eventi[voce + 1]?.tipo, 'mark');
   assert.equal(chiamata.logRighe.filter((x) => x.includes('primo audio')).length, 1);

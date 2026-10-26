@@ -19,6 +19,10 @@ const FRAME_MS = 20;
 // saluto fa perdere quello, non la prima parola ("Lasercamp" che diventava "camp").
 const SILENZIO_AVVIO_MS = 1200;
 const silenzioAvvio = () => Buffer.alloc(SILENZIO_AVVIO_MS * 8, 0xff);
+// Ogni risposta al telefono riparte col playout da zero (spesso subito dopo un clear del
+// rumore d'attesa): un silenzio in testa alla prima frase protegge la prima sillaba.
+const SILENZIO_TURNO_MS = 200;
+const silenzioTurno = () => Buffer.alloc(SILENZIO_TURNO_MS * 8, 0xff);
 export const RIEMPITIVO = 'Sì, un attimo.';
 
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
@@ -138,6 +142,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   let annulla = new AbortController();
   let fineTurno = 0; // quando il cliente ha smesso di parlare
   let primoAudio = true;
+  let silenzioDaInviare = false; // la prima frase della risposta porta un silenzio protettivo (solo telefono)
   let riempitivo = null;
   let chiudere = false;
   let richiamoId = null; // il primo RICHIAMA della chiamata: gli altri lo aggiornano invece di duplicarlo
@@ -178,7 +183,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     if (chiamata.sta_parlando) chiamata.log(`✂ ${motivo}`);
   }
 
-  function inviaAudio(mulaw) {
+  function inviaAudio(mulaw, soloRiempitivo = false) {
     fermaAttesaPrimaDellaVoce(tastiera, () => chiamata.svuota());
     if (primoAudio && fineTurno) {
       const ms = Date.now() - fineTurno;
@@ -187,6 +192,10 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       fineTurno = 0;
     }
     primoAudio = false;
+    if (silenzioDaInviare) {
+      silenzioDaInviare = false;
+      if (!chiamata.web) chiamata.inviaAudio(silenzioTurno().toString('base64'));
+    }
     clearTimeout(riempitivo);
     chiamata.inviaAudio(mulaw.toString('base64'));
     chiamata.marca();
@@ -229,6 +238,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   function nuovoTurno(detto, registratoAdesso = false, conTastiera = false, richiamoRegistrato = false) {
     interrompi('nuova frase del cliente');
     primoAudio = true;
+    silenzioDaInviare = !chiamata.web;
     if (!fineTurno) fineTurno = Date.now();
     const rispondevaEmail = attendeRispostaEmail;
     const emailDetta = emailDaVoce(detto);
@@ -254,7 +264,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     if (CONFIG.riempitivoSecondi >= 0) {
       riempitivo = setTimeout(async () => {
         const audio = await fraseInCache(RIEMPITIVO).catch(() => null);
-        if (audio && primoAudio) { chiamata.log('🫧 riempitivo'); inviaAudio(audio); primoAudio = true; }
+        if (audio && primoAudio) { chiamata.log('🫧 riempitivo'); inviaAudio(audio, true); primoAudio = true; }
       }, CONFIG.riempitivoSecondi * 1000);
     }
   }

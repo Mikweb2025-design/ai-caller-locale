@@ -59,6 +59,36 @@ test('al telefono il saluto parte con un breve silenzio: la prima parola non si 
   assert.deepEqual(Buffer.from(chiamata._inviati[1].base64, 'base64'), AUDIO);
 });
 
+test('al telefono ogni risposta parte con un breve silenzio: la prima sillaba non si mangia', async () => {
+  const chiamata = chiamataFinta();
+  chiamata.web = false;
+  chiamata.aspettaIngresso = async () => true;
+  const cervello = { ascolta: () => 1, alTesto: null, allaFine: null, chiudi() {} };
+  gestisciChiamata(chiamata, {
+    preparaCervello: async () => cervello,
+    pronuncia: async (frase, emetti) => { emetti(AUDIO); },
+    fraseSubito: () => AUDIO,
+    salutoCompleto: () => 'Buongiorno, sono Maria.',
+    salutoSegmenti: () => [{ testo: 'Buongiorno, sono Maria.', lingua: 'it' }],
+    creaRumoreAttesa: () => ({ inCorso: false, avvia: () => false, ferma: () => false }),
+    postiLiberi: async () => [],
+    confermaAppuntamento: async () => ({ ok: true }),
+    registraRichiamo: async () => ({ ok: true, richiamo: { id: 'r1' } }),
+    aggiornaRichiamo: async () => null,
+  });
+  await chiamata.alPartire();
+  chiamata._inviati.length = 0; // scarta silenzio d'avvio e saluto
+  await chiamata.alTestoScritto('Vorrei un appuntamento.');
+  cervello.alTesto('Volentieri, che nome segno?', 1);
+  await cervello.allaFine('Volentieri, che nome segno?', 1);
+  for (let i = 0; i < 50 && chiamata._inviati.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+  const pezzi = chiamata._inviati.map((x) => Buffer.from(x.base64, 'base64'));
+  assert.ok(pezzi.length >= 2, 'silenzio + risposta');
+  assert.equal(pezzi[0].length, 200 * 8, 'silenzio iniziale di 200 ms');
+  assert.ok(pezzi[0].every((b) => b === 0xff), 'il silenzio μ-law è 0xFF');
+  assert.deepEqual(pezzi[1], AUDIO, 'poi la risposta, intera');
+});
+
 test('il saluto in cache parte senza attese', async () => {
   const chiamata = chiamataFinta();
   gestisciChiamata(chiamata, {
