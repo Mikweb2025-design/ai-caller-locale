@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evitaRichiestaEmailPreventivo, gestisciChiamata } from '../src/chiamata.mjs';
+import { emailDaVoce, evitaRichiestaEmailPreventivo, gestisciChiamata } from '../src/chiamata.mjs';
 import { istruzioni } from '../src/persona.mjs';
 
 const AUDIO = Buffer.from([0xff]);
+
+assert.equal(emailDaVoce('mario chiocciola esempio punto it'), 'mario@esempio.it');
+assert.equal(emailDaVoce('Mi chiamo Mario. La mia email è mario chiocciola esempio punto it, grazie.'), 'mario@esempio.it');
+assert.equal(emailDaVoce('Per contatto può usare mario.rossi@example.com.'), 'mario.rossi@example.com');
 
 assert.equal(
   evitaRichiestaEmailPreventivo('Capisco la richiesta. Le mando la proposta per email, quale indirizzo?', 'info@lasercamp.it'),
@@ -107,6 +111,20 @@ test('il prompt decide semanticamente ogni turno e non forza l’appuntamento', 
   assert.match(prompt, /non.*proporre.*appuntamento/i);
 });
 
+test('l’opzione scherza richiede di riconoscere semanticamente il gioco e ricambiarlo', () => {
+  const prompt = istruzioni();
+  assert.match(prompt, /riconosci il gioco dal significato, non da parole fisse/i);
+  assert.match(prompt, /battuta.*provocazione bonaria.*invito giocoso.*ironia su di sé/is);
+  assert.match(prompt, /risposta soltanto neutra, letterale o formale.*è sbagliata/is);
+  assert.match(prompt, /prima parte della risposta deve fargli sentire che hai colto il tono/i);
+  assert.match(prompt, /caffè, un aperitivo o una cena insieme/i);
+  assert.match(prompt, /rispecchia il suo grado di formalità, il ritmo, le parole e il tipo di ironia/i);
+  assert.match(prompt, /formale usa ironia asciutta.*dà del tu.*autoironia.*provocazione bonaria.*inviti personali/is);
+  assert.match(prompt, /non riciclare formule o la stessa risposta con clienti diversi/i);
+  assert.match(prompt, /battuta cambia soltanto il tono, MAI i fatti/i);
+  assert.match(prompt, /non accettare per scherzo pagamenti, sconti, prezzi, lavori, appuntamenti, promesse o condizioni/i);
+});
+
 test('informazioni e preventivi non possono creare appuntamenti dal solo marker azione', async () => {
   const s = await scenario();
   await s.chiamata.alTestoScritto('Quali sono i vostri orari?');
@@ -133,6 +151,18 @@ test('la prenotazione richiede intento, riepilogo precedente, sì esplicito e sl
   await s.chiamata.alTestoScritto('Sì, confermo.');
   assert.equal(s.salvati.appuntamenti.length, 1, s.chiamata.logRighe.join('\n'));
   await s.cervello.rispondi('È tutto segnato. <<INTENTO|appuntamento>>');
+});
+
+test('l’email anticipata dal cliente viene acquisita e non viene chiesta di nuovo', async () => {
+  const s = await scenario();
+  await s.chiamata.alTestoScritto('Vorrei un appuntamento. Sono Mario Rossi e la mia email è mario chiocciola esempio punto it.');
+  assert.match(s.cervello.richieste.at(-1).testo, /email del cliente è già stato acquisito/i);
+  assert.match(s.cervello.richieste.at(-1).testo, /non chiederlo.*non richiederlo.*non farlo ripetere/i);
+  await s.cervello.rispondi('Martedì alle nove va bene? <<INTENTO|appuntamento>>');
+  await s.chiamata.alTestoScritto('Sì, per due targhe.');
+  await s.cervello.rispondi('Mario Rossi, martedì alle nove, due targhe. Conferma? <<CONFERMA|Mario Rossi|2026-10-27|09:00|due targhe>> <<INTENTO|appuntamento>>');
+  await s.chiamata.alTestoScritto('Sì, confermo.');
+  assert.equal(s.salvati.appuntamenti[0]?.email, 'mario@esempio.it');
 });
 
 test('un richiamo resta pendente finché il cliente non lo richiede o accetta esplicitamente', async () => {

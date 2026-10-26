@@ -39,11 +39,10 @@ function emailAzione(valore) {
 export function emailDaVoce(testo) {
   const normalizzato = String(testo || '').toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/\b(?:chiocciola|at)\b/g, '@')
-    .replace(/\b(?:punto|dot)\b/g, '.')
-    .replace(/\s+/g, '');
+    .replace(/\s*\b(?:chiocciola|at)\b\s*/g, '@')
+    .replace(/\s*\b(?:punto|dot)\b\s*/g, '.');
   const trovato = normalizzato.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/i)?.[0] || '';
-  return trovato.length <= 254 ? trovato : '';
+  return emailAzione(trovato);
 }
 
 export function evitaRichiestaEmailPreventivo(testo, emailAttivita = '') {
@@ -217,8 +216,13 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     interrompi('nuova frase del cliente');
     primoAudio = true;
     if (!fineTurno) fineTurno = Date.now();
-    if (attendeRispostaEmail) emailRaccolta = emailDaVoce(detto) || emailRaccolta;
-    let perCervello = attendeRispostaEmail
+    const rispondevaEmail = attendeRispostaEmail;
+    const emailDetta = emailDaVoce(detto);
+    if (emailDetta) {
+      emailRaccolta = emailDetta;
+      emailChiesta = true;
+    }
+    let perCervello = rispondevaEmail
       ? `Risposta del cliente alla domanda "Le mando la conferma per email, quale indirizzo?": ${detto}`
       : detto;
     attendeRispostaEmail = false;
@@ -226,6 +230,9 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       perCervello = `Il cliente ha confermato il riepilogo e il sistema ha registrato l'appuntamento. Digli che è tutto segnato e chiedi se gli serve altro. Non scrivere di nuovo CONFERMA. Il cliente ha detto: ${detto}`;
     } else if (richiamoRegistrato) {
       perCervello = `Il cliente ha accettato il richiamo e il sistema lo ha registrato. Digli brevemente che un collega lo richiamerà. Non scrivere di nuovo RICHIAMA. Il cliente ha detto: ${detto}`;
+    }
+    if (emailRaccolta) {
+      perCervello = `Stato certo: l'indirizzo email del cliente è già stato acquisito dal sistema. Non chiederlo, non richiederlo e non farlo ripetere.\n${perCervello}`;
     }
     statoIntento.candidati = regoleCandidate(detto, gestioneRichieste);
     turno = cervello.ascolta(perCervello);
