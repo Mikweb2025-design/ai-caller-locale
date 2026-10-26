@@ -160,9 +160,11 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
   const ritardi = [];
   const tastiera = creaTastiera({
+    // impostazioni del pannello (scheda Suoni) lette a ogni avvio: vale subito, anche a chiamata in corso.
     // Nel browser mobile i tocchi compressi possono sembrare crepitii: restano solo sul telefono Twilio.
-    attivo: CONFIG.tastiera.attiva && !chiamata.web,
-    volume: CONFIG.tastiera.volume,
+    attivo: () => Boolean(impostazioni().suoni?.attiva ?? CONFIG.tastiera.attiva) && !chiamata.web,
+    volume: () => impostazioni().suoni?.volume ?? CONFIG.tastiera.volume,
+    tipo: () => impostazioni().suoni?.tipo || 'tastiera',
     // Audio raw: niente mark e niente inviaAudio(), quindi non altera latenza o stato parlante.
     invia: (mulaw) => chiamata.inviaAudio(mulaw.toString('base64')),
   });

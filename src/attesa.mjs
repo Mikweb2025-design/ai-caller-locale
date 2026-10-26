@@ -39,26 +39,51 @@ export function creaToccoTastiera({ volume = 0.025, casuale = Math.random } = {}
   return aMulaw(pcm);
 }
 
+// Fruscio di carta: un foglio spostato sulla scrivania, sussurrato e breve.
+export function creaFruscioCarta({ volume = 0.025, casuale = Math.random } = {}) {
+  const livello = limita(volume, 0, VOLUME_MASSIMO);
+  if (livello === 0) return Buffer.alloc(0);
+  const campioni = Math.floor(intero(180, 380, casuale) * SR / 1000);
+  const pcm = Buffer.alloc(campioni * 2);
+  let prima = 0;
+  for (let i = 0; i < campioni; i++) {
+    const inviluppo = Math.sin(Math.PI * i / campioni) ** 2;
+    const rumore = casuale() * 2 - 1;
+    const acuto = rumore - prima * 0.55; // leva via la parte grave: resta solo il fruscio
+    prima = rumore;
+    pcm.writeInt16LE(limita(Math.round(32767 * livello * inviluppo * acuto * 0.5), -32768, 32767), i * 2);
+  }
+  return aMulaw(pcm);
+}
+
 export function creaRumoreAttesa({
   invia,
   attivo = true,
   volume = 0.025,
+  tipo = 'tastiera',
   casuale = Math.random,
   pianifica = setTimeout,
   annulla = clearTimeout,
 } = {}) {
-  const livello = limita(volume, 0, VOLUME_MASSIMO);
-  const abilitato = Boolean(attivo && livello > 0 && typeof invia === 'function');
+  // attivo, volume e tipo si possono passare anche come funzione: si leggono a ogni avvio,
+  // così l'interruttore del pannello vale subito, anche a chiamata già in corso.
+  const leggiAttivo = typeof attivo === 'function' ? attivo : () => Boolean(attivo);
+  const leggiVolume = typeof volume === 'function' ? volume : () => volume;
+  const leggiTipo = typeof tipo === 'function' ? tipo : () => tipo;
+  const genera = (livello) => (leggiTipo() === 'ufficio' && casuale() < 0.25
+    ? creaFruscioCarta({ volume: livello, casuale })
+    : creaToccoTastiera({ volume: livello, casuale }));
   let inCorso = false;
   let haInviato = false;
   let timer = null;
+  let livello = 0;
 
   const programma = (iniziale) => {
     const ritardo = iniziale ? tra(350, 500, casuale) : tra(700, 1400, casuale);
     timer = pianifica(() => {
       timer = null;
       if (!inCorso) return;
-      const audio = creaToccoTastiera({ volume: livello, casuale });
+      const audio = genera(livello);
       if (audio.length) {
         invia(audio);
         haInviato = true;
@@ -71,7 +96,8 @@ export function creaRumoreAttesa({
     get inCorso() { return inCorso; },
     get haInviato() { return haInviato; },
     avvia() {
-      if (!abilitato || inCorso) return false;
+      livello = limita(leggiVolume(), 0, VOLUME_MASSIMO);
+      if (!leggiAttivo() || livello <= 0 || typeof invia !== 'function' || inCorso) return false;
       inCorso = true;
       haInviato = false;
       programma(true);

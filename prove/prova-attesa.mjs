@@ -6,8 +6,10 @@ import { gestisciChiamata } from '../src/chiamata.mjs';
 import {
   creaRumoreAttesa,
   creaToccoTastiera,
+  creaFruscioCarta,
   fermaAttesaPrimaDellaVoce,
 } from '../src/attesa.mjs';
+import { controllaImpostazioni, PREDEFINITE } from '../src/impostazioni.mjs';
 
 function timerFinti() {
   const coda = [];
@@ -114,6 +116,67 @@ test('la configurazione disattiva e limita il volume non valido', () => {
   assert.deepEqual(esegui({ TASTIERA_ATTESA: '1', TASTIERA_VOLUME: 'non-numero' }), { attiva: true, volume: 0.025 });
 });
 
+test('tipo ufficio: a volte tocca un foglio di carta al posto dei tasti', () => {
+  const timer = timerFinti();
+  const inviati = [];
+  const attesa = creaRumoreAttesa({
+    invia: (audio) => inviati.push(audio),
+    tipo: () => 'ufficio',
+    casuale: () => 0.1, // sempre sotto il 0.25: esce il fruscio di carta
+    pianifica: timer.pianifica,
+    annulla: timer.annulla,
+  });
+  assert.equal(attesa.avvia(), true);
+  timer.esegui();
+  assert.equal(inviati.length, 1);
+  const tocco = creaToccoTastiera({ volume: 0.025, casuale: () => 0.1 });
+  assert.equal(inviati[0].equals(tocco), false, 'il fruscio di carta non è un tocco di tastiera');
+  assert.ok(inviati[0].some((x) => x !== 0xff), 'il fruscio non è silenzio');
+  const rms = rmsPcm(daMulaw(inviati[0]));
+  assert.ok(rms > 1 && rms < 500, `RMS del fruscio fuori soglia: ${rms}`);
+});
+
+test('volume zero e fruscio di carta: il generatore risponde alle regole del volume', () => {
+  assert.equal(creaFruscioCarta({ volume: 0 }).length, 0);
+  const fruscio = creaFruscioCarta({ volume: 0.03, casuale: Math.random });
+  assert.ok(fruscio.length >= 180 * 8, 'serve un fruscio di almeno 180 ms');
+  assert.ok(fruscio.some((x) => x !== 0xff), 'il fruscio non è silenzio');
+});
+
+test('attivo, volume e tipo come funzione: si leggono a ogni avvio', () => {
+  const timer = timerFinti();
+  const inviati = [];
+  const live = { attiva: false, volume: 0.03, tipo: 'tastiera' };
+  const attesa = creaRumoreAttesa({
+    invia: (audio) => inviati.push(audio),
+    attivo: () => live.attiva,
+    volume: () => live.volume,
+    tipo: () => live.tipo,
+    casuale: () => 0.5,
+    pianifica: timer.pianifica,
+    annulla: timer.annulla,
+  });
+  assert.equal(attesa.avvia(), false, 'spenta nel pannello: non parte');
+  live.attiva = true;
+  assert.equal(attesa.avvia(), true, 'accesa al volo: parte senza riavvio');
+  timer.esegui();
+  assert.equal(inviati.length, 1);
+  live.volume = 0;
+  assert.equal(attesa.ferma(), true);
+  assert.equal(attesa.avvia(), false, 'volume a zero: non parte');
+});
+
+test('le impostazioni dei suoni vengono validate nel pannello', () => {
+  const base = structuredClone(PREDEFINITE);
+  base.suoni.volume = 0.3;
+  assert.deepEqual(controllaImpostazioni(base), ['il volume dei suoni va da 0 a 0.04']);
+  base.suoni.volume = 0.02;
+  base.suoni.tipo = 'silenzio';
+  assert.deepEqual(controllaImpostazioni(base), ["il tipo di suono è 'tastiera' oppure 'ufficio'"]);
+  base.suoni.tipo = 'ufficio';
+  assert.deepEqual(controllaImpostazioni(base), []);
+});
+
 const AUDIO_TASTIERA = Buffer.from([0xa1, 0xa2, 0xa3]);
 const AUDIO_VOCE = Buffer.from([0xb1, 0xb2, 0xb3]);
 
@@ -156,13 +219,14 @@ function creaChiamataFinta(nome) {
 
 function creaTastieraFinta(contenitore) {
   return ({ invia, attivo }) => {
-    const abilitato = attivo !== false;
+    // attivo può essere una funzione (impostazioni lette al volo): si valuta a ogni avvio
+    const attivoOra = () => (typeof attivo === 'function' ? Boolean(attivo()) : attivo !== false);
     let inCorso = false, inviato = false;
     const controller = {
       get inCorso() { return inCorso; },
       get haInviato() { return inviato; },
       avvia() {
-        if (!abilitato || inCorso) return false;
+        if (!attivoOra() || inCorso) return false;
         inCorso = true;
         inviato = true;
         invia(AUDIO_TASTIERA);
@@ -213,7 +277,7 @@ async function scenario(nome, { web = false } = {}) {
     frasePronta: async () => AUDIO_VOCE,
     salutoCompleto: () => 'Buongiorno.',
     salutoSegmenti: () => [{ testo: 'Buongiorno.', lingua: 'it' }],
-    creaRumoreAttesa: creaTastieraFinta(controller),
+    creaRumoreAttesa: (opzioni) => creaTastieraFinta(controller)({ ...opzioni, attivo: web ? false : true }),
   });
   await chiamata.alPartire();
   chiamata.azzera(); // il saluto non appartiene alla prova dell'attesa

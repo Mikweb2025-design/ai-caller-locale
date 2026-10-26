@@ -2,7 +2,7 @@
 // le email e gli SMS. Stanno in dati/impostazioni.json; quello che manca prende i valori qui sotto.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { RADICE } from './config.mjs';
+import { RADICE, CONFIG } from './config.mjs';
 import { normalizzaGestioneRichieste } from './intenti.mjs';
 
 // DATI_DIR cambia la cartella dei dati (per i test: un'istanza separata non tocca quella vera)
@@ -105,6 +105,12 @@ export const PREDEFINITE = {
   sms: {
     attivo: process.env.CON_SMS === '1',
   },
+  // suoni d'ufficio in sottofondo mentre il receptionist prepara la risposta (si regge dal pannello, scheda Suoni)
+  suoni: {
+    attiva: CONFIG.tastiera.attiva,
+    volume: CONFIG.tastiera.volume,
+    tipo: 'tastiera',
+  },
   gestioneRichieste: normalizzaGestioneRichieste(),
 };
 
@@ -174,6 +180,11 @@ export function salvaImpostazioni(nuove) {
     tutte.design.colore = String(tutte.design.colore || '').trim();
     tutte.design.tema = ['chiaro', 'scuro'].includes(tutte.design.tema) ? tutte.design.tema : '';
   }
+  if (tutte.suoni) {
+    tutte.suoni.attiva = Boolean(tutte.suoni.attiva);
+    tutte.suoni.volume = Math.min(0.04, Math.max(0, Number(tutte.suoni.volume) || 0));
+    tutte.suoni.tipo = ['tastiera', 'ufficio'].includes(tutte.suoni.tipo) ? tutte.suoni.tipo : 'tastiera';
+  }
   tutte.gestioneRichieste = normalizzaGestioneRichieste(tutte.gestioneRichieste);
   delete tutte.receptionist.personaggio;
   delete tutte.twilio.segretoImpostato;
@@ -220,5 +231,8 @@ export function controllaImpostazioni(i) {
   if (vista.logo && !/^https?:\/\//i.test(String(vista.logo).trim())) errori.push('logo: serve un indirizzo completo che comincia con http o https');
   const c = String(i.receptionist?.voce?.campione || '').trim();
   if (c && !/^[\w-]+\.wav$/.test(c)) errori.push("la voce è il nome di un file .wav dell'elenco, oppure vuoto (voce predefinita)");
+  const suoni = i.suoni || {};
+  if (!(Number(suoni.volume) >= 0 && Number(suoni.volume) <= 0.04)) errori.push('il volume dei suoni va da 0 a 0.04');
+  if (suoni.tipo && !['tastiera', 'ufficio'].includes(suoni.tipo)) errori.push("il tipo di suono è 'tastiera' oppure 'ufficio'");
   return errori;
 }
