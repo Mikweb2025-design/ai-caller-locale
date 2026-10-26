@@ -28,7 +28,10 @@ export function consensoRichiamo(cliente, precedente = '') {
   if (/\b(?:forse|se|dipende|devo pensarci|ci penso|non (?:sono|ne sono) sicur[oa]|vielleicht|wenn|ich überlege)\b/u.test(risposta)) return false;
   if (/\b(?:richiamatemi|richiamami|chiamatemi voi|fatemi richiamare|vorrei che mi richiamaste|mi richiam(?:a|ate)(?: (?:un|una) collega)?|mi (?:faccia|fai|faccia pure|fate|può|puo|potete) richiamare(?: da (?:un|una) collega)?|(?:può|puo|potete) (?:farmi richiamare|richiamarmi)|vorrei essere richiamat[oa]|preferisco essere richiamat[oa]|voglio essere richiamat[oa])\b/.test(risposta)) return true;
   const offerta = /\b(?:richiam\w*|collega.*chiam\w*|chiamare da (?:un|una) collega)\b/.test(proposta) && /\?/.test(proposta);
-  return offerta && rispostaAffermativa(risposta.replace(/^volentieri(?=$|[,.!])/u, 'sì').replace(/^certo(?=$|[,.!])/u, 'sì'));
+  if (offerta && rispostaAffermativa(risposta.replace(/^volentieri(?=$|[,.!])/u, 'sì').replace(/^certo(?=$|[,.!])/u, 'sì'))) return true;
+  // "Sì, va bene: tre tre tre uno due tre..." — il cliente accetta e intanto detta il numero.
+  return offerta && /^(?:sì|si|ok|okay|okey|d'accordo|confermo|esatto|va bene|certo|volentieri|perfetto|ja|genau)(?![a-zàèéìòù])/u.test(risposta)
+    && !INCERTO_O_CONDIZIONALE.test(risposta) && !/\b(?:no|non|nein|nicht)\b/u.test(risposta);
 }
 
 export function congedoCliente(cliente, turno) {

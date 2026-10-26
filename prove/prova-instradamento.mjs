@@ -176,6 +176,28 @@ test('un richiamo resta pendente finché il cliente non lo richiede o accetta es
   assert.equal(s.salvati.richiami.length, 1);
 });
 
+test('richiamo dal browser: il numero dettato dal cliente viene salvato, senza finire nel motivo', async () => {
+  const s = await scenario();
+  s.chiamata.chiamante = 'browser';
+  await s.chiamata.alTestoScritto('La macchina dà un errore.');
+  await s.cervello.rispondi('Posso farla richiamare da un tecnico, a che numero la possiamo richiamare? <<INTENTO|assistenza_problema>>');
+  await s.chiamata.alTestoScritto('Sì, va bene: zero tre tre tre, uno due tre, quattro cinque sei sette.');
+  await s.cervello.rispondi('Perfetto, la faccio richiamare al tre tre tre uno due tre quattro cinque sei sette. <<RICHIAMA|Mario Rossi|errore macchina|3331234567>> <<INTENTO|richiamata>>');
+  assert.equal(s.salvati.richiami.length, 1);
+  assert.equal(s.salvati.richiami[0].telefono, '3331234567');
+  assert.equal(s.salvati.richiami[0].motivo, 'errore macchina', 'il numero non deve finire nel motivo');
+});
+
+test('richiamo da un numero noto: si usa quello del centralino, non serve chiederlo', async () => {
+  const s = await scenario();
+  await s.chiamata.alTestoScritto('La macchina dà un errore.');
+  await s.cervello.rispondi('Posso farla richiamare da un tecnico? <<RICHIAMA|Mario Rossi|errore macchina>> <<INTENTO|assistenza_problema>>');
+  await s.chiamata.alTestoScritto('Sì, va bene.');
+  await s.cervello.rispondi('La faccio richiamare. <<RICHIAMA|Mario Rossi|errore macchina>> <<INTENTO|richiamata>>');
+  assert.equal(s.salvati.richiami[0].telefono, '');
+  assert.equal(s.salvati.richiami[0].motivo, 'errore macchina');
+});
+
 test('uno slot non disponibile non viene mai registrato', async () => {
   const s = await scenario({ posti: [] });
   await s.chiamata.alTestoScritto('Vorrei un appuntamento.');

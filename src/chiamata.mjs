@@ -28,6 +28,12 @@ function separa(testo) {
   return { azioni, parlato };
 }
 
+// Numero dettato a voce: restano le cifre (con eventuale +), spazi e trattini via.
+export function numeroDettato(valore) {
+  const cifre = String(valore || '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+  return cifre.replace(/\D/g, '').length >= 6 && cifre.length <= 20 ? cifre : '';
+}
+
 function campoAzione(valore, massimo) {
   const testo = String(valore || '').trim();
   if (!testo || testo.length > massimo || /[\u0000-\u001f\u007f]|<<|>>/.test(testo)) return '';
@@ -343,7 +349,11 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
         }
         if (a.tipo === 'RICHIAMA') {
           const nome = campoAzione(a.argomenti[0], 120);
-          const dati = { nome: nome || 'non detto', motivo: campoAzione(a.argomenti.slice(1).join(' '), 1000) };
+          // ultimo campo facoltativo: il numero dettato dal cliente (serve quando non arriva dal centralino)
+          const ultimo = a.argomenti[a.argomenti.length - 1];
+          const dettato = a.argomenti.length > 2 ? numeroDettato(ultimo) : '';
+          const motivo = campoAzione((dettato ? a.argomenti.slice(1, -1) : a.argomenti.slice(1)).join(' '), 1000);
+          const dati = { nome: nome || 'non detto', motivo, telefono: dettato };
           if (!['assistenza_problema', 'richiamata'].includes(statoIntento.intento)) {
             richiamoInAttesa = null;
             chiamata.log(`⚠️ RICHIAMA ignorato: intento ${statoIntento.intento}`);

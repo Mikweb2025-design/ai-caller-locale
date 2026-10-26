@@ -70,8 +70,10 @@ export async function confermaAppuntamento({ nome, giorno, ora, dettagli, email 
 }
 
 // Il cliente ha accettato di essere richiamato da un collega: lo segno, senza giorno né orario.
-export async function registraRichiamo({ nome, motivo }, chiamata) {
-  const telefono = chiamata.chiamante && chiamata.chiamante !== 'browser' ? chiamata.chiamante : '';
+export async function registraRichiamo({ nome, motivo, telefono: dettato }, chiamata) {
+  // Prima il numero da cui chiama (se non è anonimo), poi quello dettato dal cliente.
+  const daCentralino = chiamata.chiamante && chiamata.chiamante !== 'browser' && !/^(anonymous|anonimo|privato|private|restricted|unknown|sconosciuto)$/i.test(chiamata.chiamante) ? chiamata.chiamante : '';
+  const telefono = daCentralino || dettato || '';
   const canale = chiamata.versione === 'web' ? 'browser' : 'telefono';
   try {
     const r = await aggiungiRichiamo({ nome, motivo, telefono, canale });
