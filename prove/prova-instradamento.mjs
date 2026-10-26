@@ -123,6 +123,7 @@ test('l’opzione scherza richiede di riconoscere semanticamente il gioco e rica
   assert.match(prompt, /non riciclare formule o la stessa risposta con clienti diversi/i);
   assert.match(prompt, /battuta cambia soltanto il tono, MAI i fatti/i);
   assert.match(prompt, /non accettare per scherzo pagamenti, sconti, prezzi, lavori, appuntamenti, promesse o condizioni/i);
+  assert.match(prompt, /risatina scritta "eh eh".*umorismo evidente/is);
 });
 
 test('informazioni e preventivi non possono creare appuntamenti dal solo marker azione', async () => {

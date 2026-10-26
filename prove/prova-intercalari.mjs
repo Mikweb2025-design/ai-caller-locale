@@ -15,4 +15,9 @@ assert.equal(regola('Paolo Rossi, martedì alle nove. Le torna tutto?', 3), 'Pao
 regola = creaRegolatoreIntercalari('Allora, vediamo');
 assert.equal(regola('Un caffè va bene. Allora, mi racconti il progetto?', 2), 'Un caffè va bene. Allora, mi racconti il progetto?');
 assert.equal(regola('Perfetto. Allora, quale materiale usa?', 3), 'Perfetto. Quale materiale usa?');
-console.log('11 controlli intercalari superati');
+
+const conRisata = creaRegolatoreIntercalari('allora, un attimo solo');
+assert.equal(conRisata('Eh eh, questa è bella. Mi racconti il progetto?', 1), 'Eh eh, questa è bella. Mi racconti il progetto?');
+assert.equal(conRisata('Quale materiale preferisce?', 2), 'Quale materiale preferisce?');
+assert.equal(conRisata('Eh eh, vediamo cosa si può fare.', 3), 'Vediamo cosa si può fare.');
+console.log('14 controlli intercalari superati');

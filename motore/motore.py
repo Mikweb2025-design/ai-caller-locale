@@ -35,6 +35,7 @@ TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.72)  # più bassa
 TTS_TOP_P = float(os.environ.get('TTS_TOP_P') or 0.93)  # varietà sufficiente per una cadenza meno meccanica
 TTS_TOP_K = int(os.environ.get('TTS_TOP_K') or 40)
 TTS_RIPETIZIONE = float(os.environ.get('TTS_RIPETIZIONE') or 1.08)
+TTS_SEME = int(os.environ.get('TTS_SEME') or 18)  # stessa voce e cadenza anche dopo un riavvio
 TTS_VOCE = os.environ.get('TTS_VOCE', 'ryan')
 TTS_ISTRUZIONI = os.environ.get('TTS_ISTRUZIONI', '') or None
 # clonazione da un campione (solo con i modelli "Base"): file wav a 24 kHz e la sua trascrizione
@@ -318,7 +319,7 @@ def a_8k(audio):
 LINGUE = {'it': 'italian', 'de': 'german'}  # lingua della frase → lingua di Qwen3-TTS
 
 
-def parla(testo, nome_voce=None, lingua='italian', rif=None):
+def parla(testo, nome_voce=None, lingua='italian', rif=None, seme=None):
     # tetto all'audio: il codec fa 12 passi al secondo e una persona dice almeno ~8 caratteri al secondo.
     # Senza tetto, ogni tanto il modello non si ferma più e genera minuti di silenzio o rumore.
     massimo = int(12 * (len(testo) / 8 + 1.5))
@@ -340,6 +341,8 @@ def parla(testo, nome_voce=None, lingua='italian', rif=None):
     atteso = len(testo) / 12
     passo = SR_TTS // 20  # 50 ms
     detto = silenzio = 0.0
+    import mlx.core as mx
+    mx.random.seed(int(TTS_SEME if seme is None else seme) & 0xffffffff)
     for r in voce.generate(**kw):
         a = np.asarray(r.audio, dtype=np.float32)
         for i in range(0, len(a), passo):
@@ -598,7 +601,7 @@ class Gestore(BaseHTTPRequestHandler):
             try:
                 try:
                     with blocco_tts:
-                        for pezzo in parla(richiesta.get('testo', ''), richiesta.get('voce'), LINGUE.get(richiesta.get('lingua'), 'italian'), rif=rif):
+                        for pezzo in parla(richiesta.get('testo', ''), richiesta.get('voce'), LINGUE.get(richiesta.get('lingua'), 'italian'), rif=rif, seme=richiesta.get('seme')):
                             self.wfile.write(f'{len(pezzo):X}\r\n'.encode() + pezzo + b'\r\n')
                             self.wfile.flush()
                     self.wfile.write(b'0\r\n\r\n')

@@ -15,6 +15,16 @@ function rms(pcm, salta = 800) {
   return Math.sqrt(somma / n);
 }
 
+function frequenza(pcm, salta = 800) {
+  let passaggi = 0, precedente = pcm.readInt16LE(salta * 2);
+  for (let i = salta + 1; i < pcm.length / 2; i++) {
+    const x = pcm.readInt16LE(i * 2);
+    if (precedente <= 0 && x > 0) passaggi++;
+    precedente = x;
+  }
+  return passaggi / ((pcm.length / 2 - salta) / SR);
+}
+
 function guadagno(hz) {
   const ingresso = tono(hz);
   const uscita = creaAddolcitoreVoce('voce-f-2.wav').applica(ingresso);
@@ -24,9 +34,20 @@ function guadagno(hz) {
 const basso = guadagno(250);
 const parlato = guadagno(1000);
 const asprezza = guadagno(3000);
-assert.ok(basso > 1 && basso < 1.15, `corpo inatteso: ${basso}`);
-assert.ok(parlato > 0.9 && parlato < 1.08, `parlato alterato: ${parlato}`);
-assert.ok(asprezza > 0.65 && asprezza < 0.82, `medio-alte non attenuate correttamente: ${asprezza}`);
+assert.ok(basso / parlato > 1.08 && basso / parlato < 1.25, `corpo inatteso: ${basso / parlato}`);
+assert.ok(parlato > 0.28 && parlato < 1.08, `parlato alterato: ${parlato}`);
+assert.ok(asprezza / parlato > 0.42 && asprezza / parlato < 0.58, `medio-alte non attenuate correttamente: ${asprezza / parlato}`);
+
+const nota = creaAddolcitoreVoce('voce-f-2.wav').applica(tono(220));
+const notaUscita = frequenza(nota);
+assert.ok(notaUscita > 210 && notaUscita < 217, `cadenza non scaldata correttamente: ${notaUscita} Hz`);
+
+const dinamica = Buffer.concat([tono(600, 1, 5000), tono(600, 1, 15000)]);
+const dinamicaUscita = creaAddolcitoreVoce('voce-f-2.wav').applica(dinamica);
+const meta = (dinamicaUscita.length >> 1) & ~1;
+const piano = rms(dinamicaUscita.subarray(0, meta), 2400);
+const forte = rms(dinamicaUscita.subarray(meta), 2400);
+assert.ok(forte / piano < 2.35, `volume ancora troppo variabile: ${forte / piano}`);
 
 const originale = tono(1200, 0.2);
 assert.strictEqual(creaAddolcitoreVoce('altra-voce.wav').applica(originale), originale, 'le altre voci non devono essere toccate');
@@ -40,4 +61,4 @@ const diviso = Buffer.concat([
 ]);
 assert.deepEqual(diviso, intero, 'il filtro deve essere continuo anche durante lo streaming');
 
-console.log('5 controlli timbro voce superati', { basso, parlato, asprezza });
+console.log('7 controlli timbro voce superati', { basso, parlato, asprezza, notaUscita, rapportoVolume: forte / piano });

@@ -15,8 +15,17 @@ export function creaRegolatoreIntercalari(valore) {
     let out = String(testo || '').trim();
     if (!out || !voci.length) return out;
     const rx = (x) => new RegExp(`(^|[.!?]\\s+)${escapeRx(x)}(?:[,;:]|\\s)+`, 'i');
+    const risata = /(^|[.!?]\s+)(?:eh eh|eheh|ah ah|ahah)(?:[,;:]|\s)+/i;
     const trovato = voci.find((x) => rx(x).test(out));
     const permesso = ultimoTurno === 0 || (ultimoTurno <= 3 ? turno >= 6 : turno - ultimoTurno >= 3);
+    if (risata.test(out) && permesso) {
+      ultimoTurno = turno;
+      return out;
+    }
+    if (risata.test(out)) {
+      out = out.replace(risata, '$1').replace(/\s{2,}/g, ' ').trim();
+      out = out.replace(/(^|[.!?]\s+)([a-zà-ÿ])/gu, (_tutto, prima, lettera) => prima + lettera.toLocaleUpperCase('it'));
+    }
     if (trovato && permesso) {
       ultimoTurno = turno;
       return out;

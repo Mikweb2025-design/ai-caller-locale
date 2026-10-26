@@ -21,6 +21,7 @@ try {
   let prompt = istruzioni();
   assert.match(prompt, /“Scherza con il cliente” è DISATTIVATA/i);
   assert.match(prompt, /senza ricambiare la battuta, senza ironia, giochi di parole o metafore giocose/i);
+  assert.doesNotMatch(prompt, /risatina scritta "eh eh"/i);
   assert.match(prompt, /Niente intercalari/i);
   assert.equal(creaRegolatoreIntercalari('')('Quale lavorazione le serve?', 2), 'Quale lavorazione le serve?');
 
@@ -35,6 +36,7 @@ try {
   assert.equal(impostazioni().receptionist.scherza, true);
   assert.equal(impostazioni().receptionist.intercalare, 'senta, verifico');
   assert.match(prompt, /“Scherza con il cliente” è ATTIVA/i);
+  assert.match(prompt, /risatina scritta "eh eh".*al massimo una volta/is);
   assert.match(prompt, /"senta", "verifico"/i);
   assert.equal(creaRegolatoreIntercalari(impostazioni().receptionist.intercalare)('Mi racconti il progetto?', 2), 'senta, mi racconti il progetto?');
 
