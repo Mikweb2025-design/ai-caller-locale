@@ -69,6 +69,19 @@ export async function confermaAppuntamento({ nome, giorno, ora, dettagli, email 
   return { ok: true, ...esito, sms };
 }
 
+// Il numero del richiamo arriva anche dopo che il richiamo era già stato registrato: lo si attacca.
+export async function attaccaTelefonoRichiamo(id, telefono, chiamata) {
+  try {
+    const r = await aggiornaRichiamo(id, { telefono });
+    if (!r) { chiamata.log('⚠️ richiamo da aggiornare non trovato'); return { ok: false }; }
+    chiamata.log('📞 numero attaccato al richiamo', { id });
+    return { ok: true, richiamo: r };
+  } catch (e) {
+    chiamata.log('⚠️ numero non attaccato al richiamo:', e.message);
+    return { ok: false, errore: e.message };
+  }
+}
+
 // Il cliente ha accettato di essere richiamato da un collega: lo segno, senza giorno né orario.
 export async function registraRichiamo({ nome, motivo, telefono: dettato }, chiamata) {
   // Prima il numero da cui chiama (se non è anonimo), poi quello dettato dal cliente.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emailDaVoce, evitaRichiestaEmailPreventivo, gestisciChiamata } from '../src/chiamata.mjs';
+import { emailDaVoce, evitaRichiestaEmailPreventivo, gestisciChiamata, numeroDaVoce } from '../src/chiamata.mjs';
 import { istruzioni } from '../src/persona.mjs';
 
 const AUDIO = Buffer.from([0xff]);
@@ -95,7 +95,10 @@ async function scenario({ posti = [{ giorno: '2026-10-27', ora: '09:00', minuti:
       salvati.richiami.push(dati);
       return { ok: true, richiamo: { id: `r${salvati.richiami.length}` } };
     },
-    aggiornaRichiamo: async () => null,
+    attaccaTelefonoRichiamo: async (id, telefono) => {
+      (salvati.telefoni ||= []).push({ id, telefono });
+      return { ok: true };
+    },
   });
   await chiamata.alPartire();
   return { cervello, chiamata, salvati };
@@ -212,6 +215,42 @@ test('richiamo da un numero noto: si usa quello del centralino, non serve chiede
   await s.cervello.rispondi('La faccio richiamare. <<RICHIAMA|Mario Rossi|errore macchina>> <<INTENTO|richiamata>>');
   assert.equal(s.salvati.richiami[0].telefono, '');
   assert.equal(s.salvati.richiami[0].motivo, 'errore macchina');
+});
+
+test('il numero detto a parole: cifre scritte, cifre parolate, doppio, spazzatura', () => {
+  assert.equal(numeroDaVoce('Sì, va bene: tre tre tre uno due tre quattro cinque sei sette.'), '3331234567');
+  assert.equal(numeroDaVoce('Il numero è 333 123 4567.'), '3331234567');
+  assert.equal(numeroDaVoce('doppio tre uno doppio zero quattro cinque sei sette.'), '331004567');
+  assert.equal(numeroDaVoce('+3906 1234 5678'), '+390612345678');
+  assert.equal(numeroDaVoce('Domani alle nove, due gomme.'), '', 'una frase senza numero non produce cifre');
+  assert.equal(numeroDaVoce('tre tre tre.'), '', 'meno di sei cifre: non è un numero');
+  assert.equal(numeroDaVoce(''), '');
+});
+
+test('richiamo dal browser: il numero dettato a parole nell\'accettazione arriva nel salvataggio', async () => {
+  const s = await scenario();
+  s.chiamata.chiamante = 'browser';
+  await s.chiamata.alTestoScritto('La macchina dà un errore.');
+  await s.cervello.rispondi('Posso farla richiamare da un tecnico? <<RICHIAMA|Mario Rossi|errore macchina>> <<INTENTO|assistenza_problema>>');
+  await s.chiamata.alTestoScritto('Sì, va bene: tre tre tre uno due tre quattro cinque sei sette.');
+  assert.equal(s.salvati.richiami.length, 1);
+  assert.equal(s.salvati.richiami[0].telefono, '3331234567', 'il numero a parole va nel campo telefono');
+  assert.equal(s.salvati.richiami[0].motivo, 'errore macchina');
+});
+
+test('richiamo già registrato: il numero dettato dopo viene attaccato al richiamo', async () => {
+  const s = await scenario();
+  s.chiamata.chiamante = 'browser';
+  await s.chiamata.alTestoScritto('La macchina dà un errore.');
+  await s.cervello.rispondi('Posso farla richiamare da un tecnico? <<RICHIAMA|Mario Rossi|errore macchina>> <<INTENTO|assistenza_problema>>');
+  await s.chiamata.alTestoScritto('Sì, va bene.');
+  assert.equal(s.salvati.richiami[0].telefono, '');
+  await s.chiamata.alTestoScritto('Il numero è tre tre tre uno due tre quattro cinque sei sette.');
+  await s.cervello.rispondi('Segno tre tre tre uno due tre quattro cinque sei sette. <<INTENTO|richiamata>>');
+  assert.deepEqual(s.salvati.telefoni, [{ id: 'r1', telefono: '3331234567' }], 'il numero dettato dopo si attacca al richiamo');
+  await s.chiamata.alTestoScritto('Altro: il veicolo ha 123456 km dietro.');
+  await s.cervello.rispondi('Va bene. <<INTENTO|richiamata>>');
+  assert.equal(s.salvati.telefoni.length, 1, 'il numero non si sovrascrive due volte');
 });
 
 test('uno slot non disponibile non viene mai registrato', async () => {

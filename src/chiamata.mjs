@@ -4,7 +4,7 @@
 import { CONFIG } from './config.mjs';
 import { istruzioni, salutoSegmenti, salutoCompleto } from './persona.mjs';
 import { postiLiberi, postiPerIstruzioni } from './agenda.mjs';
-import { confermaAppuntamento, registraRichiamo } from './strumenti.mjs';
+import { confermaAppuntamento, registraRichiamo, attaccaTelefonoRichiamo } from './strumenti.mjs';
 import { Cervello } from './cervello.mjs';
 import { consensoPrenotazione, consensoRichiamo, congedoCliente } from './consenso.mjs';
 import { numeriInParole, punteggiaturaDaVoce } from './parlato.mjs';
@@ -36,6 +36,17 @@ function separa(testo) {
 export function numeroDettato(valore) {
   const cifre = String(valore || '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
   return cifre.replace(/\D/g, '').length >= 6 && cifre.length <= 20 ? cifre : '';
+}
+
+// Il numero detto a parole: "tre tre tre uno due tre" → "333123". Lo vocale lo si
+// prende dal discorso del cliente, anche quando il marcatore RICHIAMA arriva senza cifre.
+const PAROLE_CIFRE = { zero: '0', uno: '1', un: '1', due: '2', tre: '3', quattro: '4', cinque: '5', sei: '6', sette: '7', otto: '8', nove: '9', piu: '+', più: '+' };
+export function numeroDaVoce(testo) {
+  const pulito = String(testo || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\bdoppio\s+(\S+)\b/g, '$1 $1');
+  const simboli = pulito.split(/[^a-z0-9+]+/).map((t) => PAROLE_CIFRE[t] ?? (t.replace(/[^\d+]/g, '') || ''));
+  return numeroDettato(simboli.join(''));
 }
 
 function campoAzione(valore, massimo) {
@@ -120,8 +131,11 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   const salutoIntero = dipendenze.salutoCompleto || salutoCompleto;
   const segmentiSaluto = dipendenze.salutoSegmenti || salutoSegmenti;
   const creaTastiera = dipendenze.creaRumoreAttesa || creaRumoreAttesa;
+  const creaSottofondo = dipendenze.creaSuonoContinuo || creaSuonoContinuo;
+  const mescolaVoceSottofondo = dipendenze.mescolaSuono || mescolaSuono;
   const conferma = dipendenze.confermaAppuntamento || confermaAppuntamento;
   const registra = dipendenze.registraRichiamo || registraRichiamo;
+  const aggiornaNumero = dipendenze.attaccaTelefonoRichiamo || attaccaTelefonoRichiamo;
   const leggiPostiLiberi = dipendenze.postiLiberi || postiLiberi;
   const logFrase = (chi, frase, metadati = {}) => {
     if (typeof chiamata.logSensibile === 'function') chiamata.logSensibile(`${chi} frase`, { caratteri: String(frase || '').length, ...metadati });
@@ -146,6 +160,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   let riempitivo = null;
   let chiudere = false;
   let richiamoId = null; // il primo RICHIAMA della chiamata: gli altri lo aggiornano invece di duplicarlo
+  let telefonoRichiamo = ''; // il numero già attaccato al richiamo registrato: non si riscrive due volte
   let confermato = false; // un solo appuntamento per chiamata: i CONFERMA ripetuti si ignorano
   const deveChiedereEmail = Boolean(impostazioni().email?.chiediEmail);
   let emailChiesta = false;
@@ -170,7 +185,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   });
   // sottofondo d'ufficio da mescolare sotto la voce di Maria (pannello: scheda Suoni);
   // la voce resta identica nei tempi: il mix è solo aritmetica sui pacchetti in uscita.
-  const ambientale = creaSuonoContinuo({
+  const ambientale = creaSottofondo({
     attivo: () => Boolean(impostazioni().suoni?.attiva ?? CONFIG.tastiera.attiva),
     volume: () => impostazioni().suoni?.volume ?? CONFIG.tastiera.volume,
     tipo: () => impostazioni().suoni?.tipo || 'tastiera',
@@ -203,12 +218,12 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     primoAudio = false;
     if (silenzioDaInviare) {
       silenzioDaInviare = false;
-      if (!chiamata.web) chiamata.inviaAudio(silenzioTurno().toString('base64'));
+      chiamata.inviaAudio(silenzioTurno().toString('base64'));
     }
     clearTimeout(riempitivo);
     // la voce parte con lo stesso timing di sempre: il sottofondo si somma al volo, senza attese
     const sottofondo = ambientale.strappa(mulaw.length);
-    chiamata.inviaAudio(mescolaSuono(mulaw, sottofondo).toString('base64'));
+    chiamata.inviaAudio(mescolaVoceSottofondo(mulaw, sottofondo).toString('base64'));
     chiamata.marca();
   }
 
@@ -242,6 +257,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     ultimoCliente = detto;
     const registrato = await registraConfermaInAttesa(detto);
     const richiamoRegistrato = await registraRichiamoInAttesa(detto);
+    await attaccaNumero(detto);
     await attendiCervello();
     nuovoTurno(detto, registrato, true, richiamoRegistrato);
   }
@@ -249,7 +265,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   function nuovoTurno(detto, registratoAdesso = false, conTastiera = false, richiamoRegistrato = false) {
     interrompi('nuova frase del cliente');
     primoAudio = true;
-    silenzioDaInviare = !chiamata.web;
+    silenzioDaInviare = true; // silenzio protettivo in testa alla risposta: telefono e browser, altrimenti la prima sillaba a volte si perde
     if (!fineTurno) fineTurno = Date.now();
     const rispondevaEmail = attendeRispostaEmail;
     const emailDetta = emailDaVoce(detto);
@@ -444,9 +460,24 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     const esito = await registra(dati, chiamata);
     if (!esito.ok) return false;
     richiamoId = esito.richiamo.id;
+    telefonoRichiamo = dati.telefono || '';
     richiamoInAttesa = null;
     chiamata.log(`✅ richiamo registrato ${motivo}`);
     return true;
+  }
+
+  // Il numero può arrivare dopo che il richiamo è già stato registrato: lo si attacca al volo.
+  async function attaccaNumero(detto) {
+    if (!richiamoId || telefonoRichiamo) return false;
+    const numero = numeroDaVoce(detto);
+    if (!numero) return false;
+    const esito = await aggiornaNumero(richiamoId, numero);
+    if (esito?.ok) {
+      telefonoRichiamo = numero;
+      chiamata.log('📞 numero dettato attaccato al richiamo');
+      return true;
+    }
+    return false;
   }
 
   async function registraConfermaInAttesa(detto) {
@@ -462,6 +493,11 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
 
   async function registraRichiamoInAttesa(detto) {
     if (!richiamoInAttesa || richiamoId) return false;
+    // se nella frase d'accettazione il cliente detta il numero, lo prendo subito
+    if (!richiamoInAttesa.telefono) {
+      const dettoNumero = numeroDaVoce(detto);
+      if (dettoNumero) richiamoInAttesa.telefono = dettoNumero;
+    }
     if (!consensoRichiamo(detto, ultimoReceptionist)) {
       if (/\b(no|non|lasci|niente|nein|nicht)\b/i.test(detto)) richiamoInAttesa = null;
       return false;
@@ -525,6 +561,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     fineTurno = Date.now();
     const registrato = await registraConfermaInAttesa(t.trim());
     const richiamoRegistrato = await registraRichiamoInAttesa(t.trim());
+    await attaccaNumero(t.trim());
     nuovoTurno(t.trim(), registrato, false, richiamoRegistrato);
   };
 
