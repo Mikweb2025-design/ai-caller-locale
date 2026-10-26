@@ -15,6 +15,10 @@ import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta
 import { creaRumoreAttesa, fermaAttesaPrimaDellaVoce } from './attesa.mjs';
 
 const FRAME_MS = 20;
+// Al telefono i primi istanti della chiamata si perdono: un breve silenzio in testa al
+// saluto fa perdere quello, non la prima parola ("Lasercamp" che diventava "camp").
+const SILENZIO_AVVIO_MS = 400;
+const silenzioAvvio = () => Buffer.alloc(SILENZIO_AVVIO_MS * 8, 0xff);
 export const RIEMPITIVO = 'Sì, un attimo.';
 
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
@@ -448,6 +452,12 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     const t = Date.now();
     let primo = true;
     const annuncia = (quando, testoLog) => { if (primo) chiamata.log(`⏱ ${testoLog} in ${quando} ms`); primo = false; };
+    if (!chiamata.web) {
+      // prima si aspetta che la linea sia davvero aperta, poi si parte col silenzio
+      const arrivato = chiamata.aspettaIngresso ? await chiamata.aspettaIngresso() : true;
+      chiamata.log(`🔌 linea pronta: ${arrivato ? 'audio del chiamante arrivato' : 'nessun audio dal chiamante'} (${Date.now() - t} ms)`);
+      inviaAudio(silenzioAvvio());
+    }
     if (!salutoPronto) {
       // prove con la voce finta: si aspetta l'audio iniettato, come prima
       const audio = Buffer.concat(await Promise.all(segmentiSaluto().map((x) => fraseInCache(x.testo, x.lingua))));

@@ -51,6 +51,7 @@ export class ChiamataTwilio {
     this.contatoreMarche = 0;
     this.chiusa = false;
     this.alPartire = null;
+    this.hoRicevutoAudio = false;
     this.alAudio = null;
     this.allaFine = null;
     this.allaMarca = null;
@@ -73,6 +74,7 @@ export class ChiamataTwilio {
           });
           break;
         case 'media':
+          this.hoRicevutoAudio = true;
           this.msTwilio = Number(m.media.timestamp);
           this.alAudio?.(m.media.payload);
           break;
@@ -101,6 +103,14 @@ export class ChiamataTwilio {
   }
 
   get sta_parlando() { return this.marche.length > 0; }
+
+  // Aspetta il primo pacchetto audio del chiamante: quando arriva, il percorso audio
+  // della telefonata è davvero aperto (prima, i primi istanti si perdono).
+  async aspettaIngresso(massimoMs = 700) {
+    const fine = Date.now() + massimoMs;
+    while (!this.hoRicevutoAudio && !this.chiusa && Date.now() < fine) await new Promise((r) => setTimeout(r, 20));
+    return this.hoRicevutoAudio;
+  }
 
   inviaAudio(base64) {
     if (this.chiusa || !this.streamSid) return;

@@ -33,6 +33,32 @@ function chiamataFinta() {
   };
 }
 
+test('al telefono il saluto parte con un breve silenzio: la prima parola non si perde', async () => {
+  const chiamata = chiamataFinta();
+  chiamata.web = false;
+  let attesa = false;
+  chiamata.aspettaIngresso = async () => { attesa = true; return true; };
+  gestisciChiamata(chiamata, {
+    preparaCervello: async () => cervelloFinto(),
+    pronuncia: async () => { throw new Error('non deve sintetizzare'); },
+    fraseSubito: () => AUDIO,
+    salutoCompleto: () => 'Buongiorno, sono Maria.',
+    salutoSegmenti: () => [{ testo: 'Buongiorno, sono Maria.', lingua: 'it' }],
+    creaRumoreAttesa: () => ({ inCorso: false, avvia: () => false, ferma: () => false }),
+    postiLiberi: async () => [],
+    confermaAppuntamento: async () => ({ ok: true }),
+    registraRichiamo: async () => ({ ok: true, richiamo: { id: 'r1' } }),
+    aggiornaRichiamo: async () => null,
+  });
+  await chiamata.alPartire();
+  assert.ok(attesa, 'deve aspettare che la linea sia aperta');
+  assert.equal(chiamata._inviati.length, 2, 'silenzio + saluto');
+  const primo = Buffer.from(chiamata._inviati[0].base64, 'base64');
+  assert.equal(primo.length, 400 * 8, 'silenzio iniziale di 400 ms');
+  assert.ok(primo.every((b) => b === 0xff), 'il silenzio μ-law è 0xFF');
+  assert.deepEqual(Buffer.from(chiamata._inviati[1].base64, 'base64'), AUDIO);
+});
+
 test('il saluto in cache parte senza attese', async () => {
   const chiamata = chiamataFinta();
   gestisciChiamata(chiamata, {
