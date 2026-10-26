@@ -326,6 +326,13 @@ Le istruzioni dicono al modello di ascoltare come parla chi chiama e di cambiare
 | Chiede quello che non sa (prezzi, tempi, garanzie) | Dice con franchezza che adesso non può dirlo e chi lo farà |
 | Fuori tema o vuole vendere qualcosa | Breve e gentile, poi chiude lo scambio con garbo |
 
+### Le opzioni “Più umano al telefono” dell’admin
+
+- **Scherza con il cliente:** quando è attiva, il receptionist riconosce semanticamente battute, autoironia, provocazioni bonarie e inviti giocosi. Rispecchia formalità, ritmo e tipo di umorismo del singolo chiamante, senza stereotipi; resta più misurato del cliente e non trasforma mai una battuta in uno sconto, un pagamento, una promessa o un appuntamento. Quando è disattivata, risponde alle stesse frasi in modo cordiale e professionale, senza ricambiare con ironia o giochi di parole.
+- **Intercalari:** usa esclusivamente quelli scritti nell’admin. Ne rende percepibile uno entro la seconda risposta e poi lascia almeno due risposte senza intercalari; evita i duplicati anche quando il modello ne inserisce uno più avanti nella frase. Campo vuoto significa nessun intercalare.
+- Le modifiche diventano effettive premendo **Salva** e valgono dalla chiamata successiva. Ogni chiamata costruisce nuove istruzioni e un nuovo regolatore dagli ultimi valori salvati; non riusa la personalità della chiamata precedente.
+- Nome, email, materiale, quantità, file, motivo, giorno e orario restano acquisiti anche quando il cliente li anticipa o li inserisce in mezzo a una battuta. In particolare, un’email detta prima della domanda viene riconosciuta e non viene richiesta di nuovo.
+
 ## Sicurezza e privacy
 
 - **`SEGRETO`.** Senza, il server presume di essere usato solo in locale. Per un server pubblico imposta `SEGRETO` a una stringa lunga e casuale: il pannello passa a `/admin/<SEGRETO>`, la pagina di chiamata dal web a `/web/<SEGRETO>`, il feed a `/calendario/<SEGRETO>.ics` e il webhook Twilio a `/twilio/<SEGRETO>/voce`. **Non esporre il pannello senza un segreto**: chiunque conosca l'indirizzo potrebbe leggere i dati dei clienti e cambiare le impostazioni (la scheda Telefono ti avvisa in rosso). Il segreto nell'indirizzo protegge il pannello e le API; per il webhook Twilio c'è in più la verifica della firma (vedi sotto).
@@ -417,6 +424,7 @@ Cosa è stato provato, onestamente:
 - Telefonate simulate che passano dallo stesso percorso di Twilio (un finto client Twilio che apre il WebSocket Media Streams e fa parlare un cliente sintetico), e chiamate e chat dal browser.
 - **Il collegamento Twilio con un Twilio finto:** `prove/prova-twilio.mjs` (55 controlli, con `prove/finto-twilio-api.mjs`) verifica la formula della firma, le credenziali, il collegamento del numero, il webhook con e senza firma giusta, il WebSocket dello stream, la chiamata in uscita e gli SMS, su un'istanza separata del server.
 - **Il tono per tipo di cliente:** `prove/matrice-tono.mjs` fa telefonate in chat per undici tipi di cliente (fretta, sgarbato, preoccupato, arrabbiato…) con controlli automatici su cifre, simboli, frasi ripetute e cose inventate; il giudizio sul tono resta a chi legge. `prove/chat-prova.mjs` fa una chiamata in sola chat con le frasi che dai.
+- **Le opzioni dell’admin:** `prove/prova-opzioni-admin.mjs` salva combinazioni isolate di “Scherza” acceso/spento e intercalari vuoti/personalizzati, poi verifica sia le istruzioni sia il testo realmente regolato. `prove/prova-umanita.mjs` prova il modello configurato con chiamanti formali, informali, autoironici e giocosi; `prove/prova-memoria.mjs` controlla che un’email anticipata non venga richiesta di nuovo.
 - **La sicurezza:** `prove/prova-sicurezza.mjs` controlla il gettone `prova` del WebSocket, i permessi dei dati, le impostazioni vecchie e i controlli anti-SSRF (l'ultimo controllo legge un sito pubblico vero e vuole la rete).
 - I calendari su un **server CalDAV locale (Radicale)**.
 - Il percorso del cervello compatibile OpenAI su un **servizio finto di prova** che imita il protocollo.

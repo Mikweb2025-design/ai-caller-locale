@@ -326,6 +326,13 @@ The instructions tell the model to listen to how the caller speaks and change th
 | Asks what it does not know (prices, times, guarantees) | Says frankly it cannot tell right now and who will |
 | Off topic or selling something | Short and polite, then ends the exchange gracefully |
 
+### Admin “More human on the phone” options
+
+- **Joke with the caller:** when enabled, the receptionist semantically recognizes jokes, self-deprecation, friendly teasing and playful invitations. It mirrors each caller’s formality, pace and kind of humour without stereotypes, stays more restrained than the caller, and never turns a joke into a discount, payment, promise or appointment. When disabled, it answers the same lines politely and professionally without replying with irony or wordplay.
+- **Fillers:** it uses only the expressions entered in the admin. One is made noticeable by the second reply, followed by at least two replies without a filler; duplicates are removed even when the model inserts one later in the sentence. An empty field means no fillers.
+- Changes take effect after pressing **Save** and apply from the next call. Every call builds fresh instructions and a fresh filler regulator from the latest saved values; it does not reuse the previous call’s personality.
+- Name, email, material, quantity, file availability, reason, day and time remain acquired even when the caller provides them early or inside a joke. In particular, an email volunteered before being asked is recognized and is not requested again.
+
 ## Security and privacy
 
 - **`SEGRETO`.** Without it the server assumes it is only used locally. For a public server set `SEGRETO` to a long random string: the panel moves to `/admin/<SEGRETO>`, the web call page to `/web/<SEGRETO>`, the feed to `/calendario/<SEGRETO>.ics` and the Twilio webhook to `/twilio/<SEGRETO>/voce`. **Do not expose the panel without a secret**: anyone who knows the address could read customer data and change settings (the Phone tab warns you in red). The secret in the URL protects the panel and the API; the Twilio webhook also has signature verification (see below).
@@ -417,6 +424,7 @@ What has been tested, honestly:
 - Simulated phone calls that go through the same path as Twilio (a fake Twilio client that opens the Media Streams WebSocket and plays a synthetic customer voice), and calls and chat from the browser.
 - **The Twilio link against a fake Twilio:** `prove/prova-twilio.mjs` (55 checks, with `prove/finto-twilio-api.mjs`) verifies the signature formula, the credentials, the number link, the webhook with and without a valid signature, the stream WebSocket, the outgoing call and the SMS, on a separate server instance.
 - **Tone per type of caller:** `prove/matrice-tono.mjs` runs chat calls for eleven caller types (in a hurry, rude, worried, angry...) with automatic checks on digits, symbols, repeated sentences and invented facts; judging the tone is left to the reader. `prove/chat-prova.mjs` runs a chat-only call with the sentences you give it.
+- **Admin options:** `prove/prova-opzioni-admin.mjs` saves isolated combinations of jokes enabled/disabled and empty/custom fillers, then checks both the generated instructions and the regulated text. `prove/prova-umanita.mjs` exercises the configured model with formal, informal, self-deprecating and playful callers; `prove/prova-memoria.mjs` verifies that an email volunteered early is not requested again.
 - **Security:** `prove/prova-sicurezza.mjs` checks the `prova` WebSocket token, the data permissions, old settings files and the anti-SSRF checks (the last check reads a real public website and needs network access).
 - Calendars against a **local CalDAV server (Radicale)**.
 - The OpenAI-compatible brain path against a **fake test service** that imitates the protocol.

@@ -145,7 +145,7 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     </div>
     <h2 style="margin-top:18px">Più umano al telefono</h2>
     <p class="aiuto">I piccoli segni della persona che ascolta invece del centralino: sempre gentile e professionale, ma vivo.</p>
-    <label class="check"><input type="checkbox" data-k="receptionist.scherza"> <strong>Scherza con il cliente</strong> <small>quando lui scherza o è alla leggera: una battuta ogni 2-3 risposte, mai sui suoi problemi</small></label>
+    <label class="check"><input type="checkbox" data-k="receptionist.scherza"> <strong>Scherza con il cliente</strong> <small>attivo: si adatta al suo umorismo; spento: resta cordiale e professionale, senza battute</small></label>
     <div style="margin-top:12px"><label>Intercalari <small>(espressioni naturali, separate da virgola: ne usa una entro le prime due risposte, poi non più di una ogni tre. Vuoto = nessuno)</small></label><input data-k="receptionist.intercalare" placeholder="es. allora, un attimo solo, vediamo"></div>
     <h2 style="margin-top:18px">Lingue</h2>
     <p class="aiuto">L'italiano c'è sempre. Con il tedesco il receptionist risponde nella lingua di chi chiama (italiano o Deutsch), anche dentro la stessa telefonata.</p>
