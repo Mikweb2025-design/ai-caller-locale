@@ -78,7 +78,7 @@ La vecchia istruzione attiva “in entrambi i casi proponi un appuntamento” è
 - I log tecnici nuovi non contengono trascrizioni, nomi, numeri, email o dettagli degli appuntamenti.
 - `registrazioni/appuntamenti.jsonl` registra solo ID, tipo, stato e data di creazione. I dati completi restano in `dati/appuntamenti.json`, dove servono al servizio.
 - Cartella log a `700`, file a `600`; i `.log` più vecchi di `LOG_CONSERVAZIONE_GIORNI` vengono eliminati all'avvio (30 giorni predefiniti, intervallo 1–365).
-- I record storici di `appuntamenti.jsonl` vengono migrati automaticamente al formato senza PII. I vecchi `.log` delle chiamate ancora entro la conservazione restano protetti con permessi ristretti e possono essere eliminati manualmente se non servono più.
+- I record storici di `appuntamenti.jsonl` vengono migrati automaticamente al formato senza PII. Anche i vecchi `.log` ancora entro la conservazione vengono bonificati automaticamente, mantenendo tempi ed eventi tecnici ma rimuovendo trascrizioni, contatti e segreti negli URL.
 
 ## 8. Prove eseguite
 
@@ -87,6 +87,7 @@ La vecchia istruzione attiva “in entrambi i casi proponi un appuntamento” è
 - `node prove/prova-consenso.mjs`
 - `node --test prove/prova-instradamento.mjs prove/prova-attesa.mjs`
 - `node prove/prova-prenotazione-atomica.mjs`
+- `node prove/prova-log-privacy.mjs`
 - `node prove/prova-email.mjs`
 - `node prove/prova-intercalari.mjs`
 - `node prove/prova-parlato.mjs`

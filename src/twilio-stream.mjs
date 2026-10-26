@@ -1,6 +1,6 @@
 // Il lato Twilio di una chiamata (Media Streams): riceve l'audio del telefono e ci rimanda
 // quello del receptionist, tenendo il conto di cosa il cliente ha davvero già sentito.
-import { appendFileSync, chmodSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONFIG, RADICE } from './config.mjs';
 
@@ -8,14 +8,33 @@ const cartellaLog = join(RADICE, 'registrazioni');
 mkdirSync(cartellaLog, { recursive: true, mode: 0o700 });
 try { chmodSync(cartellaLog, 0o700); } catch {}
 const scadenzaLog = Date.now() - CONFIG.log.conservazioneGiorni * 86400000;
+export function bonificaTestoLog(contenuto) {
+  return String(contenuto || '').split('\n').map((riga) => riga
+    .replace(/(👤|🤖|⌨️|🔧|📅|📞|✉️)[^\n]*/gu, '$1 [dato personale storico rimosso]')
+    .replace(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/gi, '[email rimossa]')
+    .replace(/\/(web|admin)\/[a-z0-9_-]{16,}/gi, '/$1/<SEGRETO>')
+    .replace(/(?:\+?\d[\s,().-]*){8,}/g, '[telefono rimosso]'))
+    .join('\n');
+}
+
+let logStoriciBonificati = 0;
 for (const nome of readdirSync(cartellaLog)) {
   if (!nome.endsWith('.log')) continue;
   const file = join(cartellaLog, nome);
   try {
     if (statSync(file).mtimeMs < scadenzaLog) unlinkSync(file);
-    else chmodSync(file, 0o600);
+    else {
+      const prima = readFileSync(file, 'utf8');
+      const dopo = bonificaTestoLog(prima);
+      if (dopo !== prima) {
+        writeFileSync(file, dopo, { mode: 0o600 });
+        logStoriciBonificati += 1;
+      }
+      chmodSync(file, 0o600);
+    }
   } catch {}
 }
+if (logStoriciBonificati) console.log(`🔒 bonificati ${logStoriciBonificati} log storici`);
 
 export class ChiamataTwilio {
   constructor(ws, versione, { web = false } = {}) {
