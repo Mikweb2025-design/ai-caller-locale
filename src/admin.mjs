@@ -2,6 +2,33 @@
 // Una pagina sola che parla con le API /api/<segreto>/... del server.
 import { temaCss } from './design.mjs';
 
+export const escHtml = (valore) => String(valore ?? '').replace(/[<>&"]/g, (carattere) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[carattere]));
+
+export function htmlRegolaRichiesta(regola = {}, esc = escHtml) {
+  const selezionata = (valore, corrente) => (valore === corrente ? ' selected' : '');
+  const indicatori = Array.isArray(regola.indicatori) ? regola.indicatori.join('\n') : (regola.indicatori || '');
+  return '<div class="griglia">'
+    + '<div><label>Nome della regola</label><input class="r-nome" value="' + esc(regola.nome) + '" placeholder="es. Richiesta preventivo"></div>'
+    + '<div><label>Priorità <small>(numero più alto = prima)</small></label><input class="r-priorita" type="number" value="' + esc(regola.priorita ?? 0) + '"></div>'
+    + '<div><label>Intento riconosciuto</label><select class="r-intento">'
+    + '<option value="informazione"' + selezionata('informazione', regola.intento) + '>Informazione</option>'
+    + '<option value="preventivo_file"' + selezionata('preventivo_file', regola.intento) + '>Preventivo o invio file</option>'
+    + '<option value="assistenza_problema"' + selezionata('assistenza_problema', regola.intento) + '>Assistenza o problema</option>'
+    + '<option value="richiamata"' + selezionata('richiamata', regola.intento) + '>Richiamata</option>'
+    + '<option value="appuntamento"' + selezionata('appuntamento', regola.intento) + '>Appuntamento</option>'
+    + '<option value="altro"' + selezionata('altro', regola.intento) + '>Altro</option></select></div>'
+    + '<div><label>Comportamento</label><select class="r-comportamento">'
+    + '<option value="rispondi"' + selezionata('rispondi', regola.comportamento) + '>Rispondi alla richiesta</option>'
+    + '<option value="raccogli_dati"' + selezionata('raccogli_dati', regola.comportamento) + '>Raccogli i dati necessari</option>'
+    + '<option value="proponi_appuntamento"' + selezionata('proponi_appuntamento', regola.comportamento) + '>Proponi un appuntamento</option>'
+    + '<option value="offri_richiamata"' + selezionata('offri_richiamata', regola.comportamento) + '>Offri una richiamata</option>'
+    + '<option value="non_proporre"' + selezionata('non_proporre', regola.comportamento) + '>Non fare proposte</option></select></div>'
+    + '<div style="grid-column:1/-1"><label>Indicatori del cliente <small>(uno per riga, frasi o concetti; niente codice)</small></label><textarea class="r-indicatori" placeholder="quanto costa\nvi mando il disegno\nserve un preventivo">' + esc(indicatori) + '</textarea></div>'
+    + '<div><label>Obiettivo</label><textarea class="r-obiettivo" placeholder="Cosa deve ottenere Maria in questo caso">' + esc(regola.obiettivo) + '</textarea></div>'
+    + '<div><label>Cosa non proporre</label><textarea class="r-non-proporre" placeholder="es. non proporre un appuntamento">' + esc(regola.nonProporre) + '</textarea></div>'
+    + '</div><div class="riga" style="margin-top:10px"><label class="check"><input type="checkbox" class="r-attiva"' + (regola.attiva === false ? '' : ' checked') + '> Regola attiva</label><button class="pericolo r-togli" type="button" style="margin-left:auto">Rimuovi</button></div>';
+}
+
 export function paginaAdmin({ api, web, feed, avatar }) {
   return `<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -50,6 +77,8 @@ export function paginaAdmin({ api, web, feed, avatar }) {
   .vuoto { color:var(--tenue); font-style:italic; }
   .conto { border:1px solid var(--bordo); border-radius:12px; padding:14px; margin-bottom:12px; }
   .conto .riga { flex-wrap:wrap; }
+  .regola-richiesta { border:1px solid var(--bordo); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .regola-richiesta .riga { flex-wrap:wrap; }
   .esito { font-size:13px; color:var(--tenue); }
   .avatar-editor { display:flex; gap:18px; align-items:center; padding:14px; margin:0 0 18px; border:1px solid var(--bordo); border-radius:14px; background:var(--sfondo); }
   .avatar-editor img { width:92px; height:92px; flex:0 0 auto; border:3px solid color-mix(in srgb,var(--accento) 55%,var(--bordo)); border-radius:50%; object-fit:cover; object-position:center 34%; }
@@ -124,6 +153,23 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     <div style="margin-top:12px"><label>Saluto in tedesco <small>(si aggiunge a quello italiano; {nome} = nome del receptionist)</small></label><input data-k="lingue.salutoTedesco"></div>
     <div style="margin-top:12px"><label>Saluto <small>(vuoto = "&lt;attività&gt;, buongiorno! Sono &lt;nome&gt;, mi dica.")</small></label><input data-k="receptionist.saluto"></div>
     <div style="margin-top:12px"><label>Istruzioni in più <small>(in italiano, es. "Il venerdì pomeriggio niente revisioni")</small></label><textarea data-k="receptionist.note"></textarea></div>
+  </section>
+
+  <section data-scheda="Gestione richieste">
+    <h2>Gestione richieste</h2>
+    <p class="aiuto">Maria riconosce semanticamente ciò che vuole il cliente: non cerca una parola esatta. Queste regole la guidano nei casi importanti, lasciandole decidere come rispondere in base all'intera conversazione.</p>
+    <div class="griglia">
+      <label class="check"><input type="checkbox" id="richiesteAutomatiche"> <span><strong>Riconoscimento automatico</strong><br><small>Attivo: l'AI capisce anche frasi non previste. Disattivo: usa soltanto gli indicatori scritti nelle regole.</small></span></label>
+      <div><label>Azione predefinita <small>(se nessuna regola è adatta)</small></label><select id="richiesteFallback">
+        <option value="rispondi">Rispondi alla richiesta</option>
+        <option value="raccogli_dati">Raccogli i dati necessari</option>
+        <option value="proponi_appuntamento">Proponi un appuntamento</option>
+        <option value="offri_richiamata">Offri una richiamata</option>
+        <option value="non_proporre">Non fare proposte</option>
+      </select></div>
+    </div>
+    <div id="regoleRichieste" style="margin-top:18px"></div>
+    <button class="secondario" type="button" id="aggiungiRegolaRichiesta">+ Aggiungi regola</button>
   </section>
 
   <section data-scheda="Voce">
@@ -258,6 +304,7 @@ const AVATAR = ${JSON.stringify(avatar)};
 const $ = (s) => document.querySelector(s);
 const GIORNI = { lunedi: 'Lunedì', martedi: 'Martedì', mercoledi: 'Mercoledì', giovedi: 'Giovedì', venerdi: 'Venerdì', sabato: 'Sabato', domenica: 'Domenica' };
 let dati = null;
+const htmlRegolaRichiesta = ${htmlRegolaRichiesta.toString()};
 
 $('#giorni').innerHTML = Object.entries(GIORNI).map(([k, n]) => '<label style="margin:0">' + n + '</label><input data-k="orari.' + k + '" placeholder="chiuso">').join('');
 
@@ -417,11 +464,49 @@ function leggiConto(d) {
 }
 $('#aggiungiConto').onclick = () => schedaConto({ url: servizi.nextcloud?.url });
 
+function schedaRichiesta(regola = {}) {
+  const d = document.createElement('div');
+  d.className = 'regola-richiesta';
+  d.dataset.id = regola.id || (globalThis.crypto?.randomUUID?.() || 'regola-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+  d.innerHTML = htmlRegolaRichiesta(regola, esc);
+  d.querySelector('.r-togli').onclick = () => d.remove();
+  $('#regoleRichieste').append(d);
+}
+function leggiRegolaRichiesta(d) {
+  const q = (campo) => d.querySelector('.r-' + campo);
+  return {
+    id: d.dataset.id,
+    nome: q('nome').value.trim(),
+    attiva: q('attiva').checked,
+    indicatori: q('indicatori').value.split('\\n').map((riga) => riga.trim()).filter(Boolean),
+    intento: q('intento').value,
+    comportamento: q('comportamento').value,
+    obiettivo: q('obiettivo').value.trim(),
+    nonProporre: q('non-proporre').value.trim(),
+    priorita: Number(q('priorita').value) || 0,
+  };
+}
+function riempiGestioneRichieste(configurazione = {}) {
+  $('#richiesteAutomatiche').checked = configurazione.automatica ?? true;
+  $('#richiesteFallback').value = configurazione.azionePredefinita || 'rispondi';
+  $('#regoleRichieste').innerHTML = '';
+  for (const regola of configurazione.regole || []) schedaRichiesta(regola);
+}
+function leggiGestioneRichieste() {
+  return {
+    automatica: $('#richiesteAutomatiche').checked,
+    azionePredefinita: $('#richiesteFallback').value,
+    regole: [...document.querySelectorAll('.regola-richiesta')].map(leggiRegolaRichiesta),
+  };
+}
+$('#aggiungiRegolaRichiesta').onclick = () => schedaRichiesta({ attiva: true, intento: 'altro', comportamento: 'rispondi', priorita: 0 });
+
 function riempi() {
   $('#cervelli').innerHTML = '';
   for (const slot of ['principale', 'riserva']) schedaCervello(slot, dati.cervello?.[slot]);
   $('#conti').innerHTML = '';
   for (const c of dati.calendari || []) schedaConto(c);
+  riempiGestioneRichieste(dati.gestioneRichieste);
   for (const el of document.querySelectorAll('[data-k]')) {
     const v = prendi(dati, el.dataset.k);
     if (el.type === 'checkbox') el.checked = Boolean(v); else el.value = v ?? '';
@@ -438,11 +523,12 @@ function raccogli() {
   o.calendari = [...document.querySelectorAll('.conto:not(.cervello)')].map(leggiConto);
   o.cervello = {};
   for (const d of document.querySelectorAll('.cervello')) o.cervello[d.dataset.slot] = leggiCervello(d);
+  o.gestioneRichieste = leggiGestioneRichieste();
   return o;
 }
 
 const quando = (a) => new Date(a.giorno + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + a.ora;
-const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+const esc = ${escHtml.toString()};
 const classeStato = (s) => (s === 'da verificare' ? 'da' : s === 'da richiamare' ? 'richiamo' : s);
 async function elenco() {
   const { appuntamenti } = await chiedi('/appuntamenti');

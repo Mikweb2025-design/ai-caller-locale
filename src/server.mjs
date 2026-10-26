@@ -22,7 +22,7 @@ import { recupera, controllaUrl } from './rete.mjs';
 import { SERVIZI_CERVELLO, elencaModelli, provaConversazione } from './cervello.mjs';
 import { istruzioni } from './persona.mjs';
 import { postiPerIstruzioni } from './agenda.mjs';
-import { CARTELLA_DATI, proteggi, impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio } from './impostazioni.mjs';
+import { CARTELLA_DATI, proteggi, impostazioniPubbliche, salvaImpostazioni, controllaImpostazioni, impostazioni, alCambio, unisciSicuro } from './impostazioni.mjs';
 import { appuntamenti, annulla, sposta, richiamoFatto, leggiCaldav, postiLiberi, leggiCalendari, impegniEsterni, ics, emailDiProva, inRoma, sincronizzaManca, chiediConferma, chiediConfermaProssimi, rispondiConferma } from './agenda.mjs';
 
 const segreto = SEGRETO;
@@ -95,7 +95,7 @@ const server = http.createServer(async (req, res) => {
       const inUscita = url.searchParams.get('uscita') === '1';
       const cliente = inUscita ? p.To : p.From;
       const numeroTwilio = inUscita ? p.From : p.To;
-      console.log(`📞 ${p.CallSid} ${inUscita ? 'in uscita verso' : 'da'} ${cliente}`);
+      console.log(`📞 ${p.CallSid} ${inUscita ? 'chiamata in uscita' : 'chiamata in entrata'}`);
       preriscalda(p.CallSid, cliente); // Claude Code si avvia mentre squilla
       // lo stream torna sullo stesso indirizzo pubblico (host e eventuale prefisso), non sull'Host della richiesta
       const base = urlPubblico() ? new URL(urlPubblico()) : null;
@@ -138,7 +138,7 @@ const server = http.createServer(async (req, res) => {
       const r = rispondiConferma(id, token, scelta || '');
       if (!r.ok) return html(paginaEsitoConferma({ appuntamento: r.appuntamento, esito: r.motivo }));
       if (!scelta) return html(paginaDomandaConferma({ appuntamento: r.appuntamento, si: `${url.pathname}/si`, no: `${url.pathname}/no` }));
-      console.log(`✉️ ${r.appuntamento.nome}: ${r.risposta === 'si' ? 'confermato' : 'non può venire'} (${r.appuntamento.giorno} ${r.appuntamento.ora})`);
+      console.log('✉️ risposta conferma cliente', { id: r.appuntamento.id, esito: r.risposta });
       return html(paginaEsitoConferma({ appuntamento: r.appuntamento, esito: r.appuntamento.confermaEsito }));
     }
     if (url.pathname.startsWith(`/api/${segreto}/`)) {
@@ -146,8 +146,7 @@ const server = http.createServer(async (req, res) => {
       const corpo = req.method === 'POST' ? JSON.parse((await leggiCorpo(req)) || '{}') : null;
       if (percorso === '/impostazioni' && req.method === 'GET') return json(200, impostazioniPubbliche());
       if (percorso === '/impostazioni' && req.method === 'POST') {
-        const prova = structuredClone(impostazioni());
-        for (const [sez, v] of Object.entries(corpo)) if (typeof v === 'object' && prova[sez]) Object.assign(prova[sez], v);
+        const prova = unisciSicuro(impostazioni(), corpo);
         const errori = controllaImpostazioni(prova);
         if (errori.length) return json(400, { errore: errori.join('; ') });
         salvaImpostazioni(corpo);
@@ -390,6 +389,6 @@ alCambio(() => { for (const x of salutoSegmenti()) frasePronta(x.testo, x.lingua
 // Di default solo questo computer. HOST=0.0.0.0 per aprire alla rete (dietro un proxy con https e con SEGRETO).
 server.listen(CONFIG.porta, process.env.HOST || '127.0.0.1', () => {
   console.log(`Receptionist in ascolto sulla porta ${CONFIG.porta}`);
-  console.log(`Chiamata dal browser: http://localhost:${CONFIG.porta}/${segreto === 'locale' ? '' : `web/${segreto}`}`);
-  console.log(`Impostazioni:        http://localhost:${CONFIG.porta}/admin${segreto === 'locale' ? '' : `/${segreto}`}`);
+  console.log(`Chiamata dal browser: http://localhost:${CONFIG.porta}/${segreto === 'locale' ? '' : 'web/<SEGRETO>'}`);
+  console.log(`Impostazioni:        http://localhost:${CONFIG.porta}/admin${segreto === 'locale' ? '' : '/<SEGRETO>'}`);
 });

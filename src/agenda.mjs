@@ -44,6 +44,7 @@ export function appuntamenti() {
 }
 const salva = (lista) => { writeFileSync(FILE, JSON.stringify(lista, null, 2), { mode: 0o600 }); proteggi(FILE); };
 proteggi(FILE); // anche se esiste già con permessi larghi
+let codaPrenotazioni = Promise.resolve();
 
 export async function annulla(id) {
   const lista = appuntamenti();
@@ -265,23 +266,34 @@ export async function richiamoFatto(id) {
 
 // --- prenotazione ---
 export async function prenota({ nome, giorno, ora, dettagli = '', email = '', telefono = '', canale = '' }) {
-  const { agenda, email: cfgEmail } = impostazioni();
-  const min = minutiDa(ora);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(giorno || '') || min === null) throw new Error(`data o ora non valida: ${giorno} ${ora}`);
-  const libero = (await postiLiberi()).some((p) => p.giorno === giorno && p.minuti === min);
-  const a = {
-    id: randomBytes(6).toString('hex'),
-    nome: String(nome || '').trim(), telefono, email: String(email || '').trim(),
-    giorno, ora: hhmm(min), durata: Number(agenda.durataMinuti) || 60,
-    dettagli: String(dettagli || '').trim(),
-    stato: libero ? 'confermato' : 'da verificare', // orario già occupato o fuori orario: lo guarda una persona
-    canale, creato: new Date().toISOString(),
-  };
-  const lista = appuntamenti();
-  lista.push(a);
-  salva(lista);
+  let sblocca;
+  const precedente = codaPrenotazioni;
+  codaPrenotazioni = new Promise((risolvi) => { sblocca = risolvi; });
+  await precedente;
+  let a;
+  let libretto;
+  try {
+    const { agenda, email: cfgEmail } = impostazioni();
+    const min = minutiDa(ora);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(giorno || '') || min === null) throw new Error(`data o ora non valida: ${giorno} ${ora}`);
+    const libero = (await postiLiberi()).some((p) => p.giorno === giorno && p.minuti === min);
+    if (!libero) throw new Error(`slot non disponibile: ${giorno} ${hhmm(min)}`);
+    a = {
+      id: randomBytes(6).toString('hex'),
+      nome: String(nome || '').trim(), telefono, email: String(email || '').trim(),
+      giorno, ora: hhmm(min), durata: Number(agenda.durataMinuti) || 60,
+      dettagli: String(dettagli || '').trim(),
+      stato: 'confermato',
+      canale, creato: new Date().toISOString(),
+    };
+    const lista = appuntamenti();
+    lista.push(a);
+    salva(lista);
+    libretto = cfgEmail.attiva && cfgEmail.chiediConferma;
+  } finally {
+    sblocca();
+  }
   // email di conferma al cliente: solo se l'admin ha attivato l'opzione; l'avviso al titolare (avvisaA) parte sempre
-  const libretto = cfgEmail.attiva && cfgEmail.chiediConferma;
   const [esiti, erroriCalendario] = await Promise.all([
     avvisa(a, { cliente: libretto }).catch((e) => ({ errore: e.message })),
     sincronizza(a),

@@ -1,11 +1,21 @@
 // Il lato Twilio di una chiamata (Media Streams): riceve l'audio del telefono e ci rimanda
 // quello del receptionist, tenendo il conto di cosa il cliente ha davvero già sentito.
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { RADICE } from './config.mjs';
+import { CONFIG, RADICE } from './config.mjs';
 
 const cartellaLog = join(RADICE, 'registrazioni');
-mkdirSync(cartellaLog, { recursive: true });
+mkdirSync(cartellaLog, { recursive: true, mode: 0o700 });
+try { chmodSync(cartellaLog, 0o700); } catch {}
+const scadenzaLog = Date.now() - CONFIG.log.conservazioneGiorni * 86400000;
+for (const nome of readdirSync(cartellaLog)) {
+  if (!nome.endsWith('.log')) continue;
+  const file = join(cartellaLog, nome);
+  try {
+    if (statSync(file).mtimeMs < scadenzaLog) unlinkSync(file);
+    else chmodSync(file, 0o600);
+  } catch {}
+}
 
 export class ChiamataTwilio {
   constructor(ws, versione, { web = false } = {}) {
@@ -37,7 +47,7 @@ export class ChiamataTwilio {
           this.parametri = m.start.customParameters || {};
           this.chiamante = this.parametri.from || null;
           this.file = join(cartellaLog, `${new Date().toISOString().replace(/[:.]/g, '-')}-${versione}.log`);
-          this.log('📞 chiamata', { callSid: this.callSid, da: this.chiamante, a: this.parametri.to, web: this.web });
+          this.log('📞 chiamata', { callSid: this.callSid, web: this.web, contattoDisponibile: Boolean(this.chiamante && this.chiamante !== 'browser') });
           Promise.resolve(this.alPartire?.()).catch((e) => {
             this.log('errore avvio chiamata', e.message);
             this.ws.close();
@@ -107,6 +117,14 @@ export class ChiamataTwilio {
   log(...a) {
     const riga = `[${((Date.now() - this.t0) / 1000).toFixed(2)}s] ` + a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
     console.log(`[${this.versione}] ${riga}`);
-    if (this.file) appendFileSync(this.file, riga + '\n');
+    if (this.file) {
+      appendFileSync(this.file, riga + '\n', { mode: 0o600 });
+      try { chmodSync(this.file, 0o600); } catch {}
+    }
+  }
+
+  // Per dati personali scrive soltanto tipo e metadati tecnici, mai il contenuto.
+  logSensibile(tipo, metadati = {}) {
+    this.log(tipo, metadati);
   }
 }

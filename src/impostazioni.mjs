@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { RADICE } from './config.mjs';
+import { normalizzaGestioneRichieste } from './intenti.mjs';
 
 // DATI_DIR cambia la cartella dei dati (per i test: un'istanza separata non tocca quella vera)
 export const CARTELLA_DATI = process.env.DATI_DIR ? resolve(process.env.DATI_DIR) : join(RADICE, 'dati');
@@ -104,12 +105,28 @@ export const PREDEFINITE = {
   sms: {
     attivo: process.env.CON_SMS === '1',
   },
+  gestioneRichieste: normalizzaGestioneRichieste(),
 };
 
-function unisci(base, sopra) {
-  const out = Array.isArray(base) ? [...base] : { ...base };
+const CHIAVI_PERICOLOSE = new Set(['__proto__', 'prototype', 'constructor']);
+
+function clonaSicuro(valore) {
+  if (Array.isArray(valore)) return valore.map(clonaSicuro);
+  if (!valore || typeof valore !== 'object') return valore;
+  const copia = {};
+  for (const [chiave, contenuto] of Object.entries(valore)) {
+    if (!CHIAVI_PERICOLOSE.has(chiave)) copia[chiave] = clonaSicuro(contenuto);
+  }
+  return copia;
+}
+
+export function unisciSicuro(base, sopra) {
+  const out = clonaSicuro(base);
   for (const [k, v] of Object.entries(sopra || {})) {
-    out[k] = v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object' ? unisci(base[k], v) : v;
+    if (CHIAVI_PERICOLOSE.has(k)) continue;
+    out[k] = v && typeof v === 'object' && !Array.isArray(v) && base?.[k] && typeof base[k] === 'object' && !Array.isArray(base[k])
+      ? unisciSicuro(base[k], v)
+      : clonaSicuro(v);
   }
   return out;
 }
@@ -119,8 +136,9 @@ export function impostazioni() {
   if (!cache) {
     let salvate = {};
     if (existsSync(FILE)) { try { salvate = JSON.parse(readFileSync(FILE, 'utf8')); } catch (e) { console.error('impostazioni.json illeggibile:', e.message); } }
-    if (salvate.receptionist) delete salvate.receptionist.personaggio; // campo tolto: nelle impostazioni vecchie si ignora
-    cache = unisci(PREDEFINITE, salvate);
+    if (salvate.receptionist && typeof salvate.receptionist === 'object') delete salvate.receptionist.personaggio; // campo tolto: nelle impostazioni vecchie si ignora
+    cache = unisciSicuro(PREDEFINITE, salvate);
+    cache.gestioneRichieste = normalizzaGestioneRichieste(cache.gestioneRichieste);
   }
   return cache;
 }
@@ -148,7 +166,7 @@ export function salvaImpostazioni(nuove) {
       delete c.passwordImpostata;
     }
   }
-  const tutte = unisci(PREDEFINITE, unisci(attuali, nuove));
+  const tutte = unisciSicuro(PREDEFINITE, unisciSicuro(attuali, nuove));
   if (Array.isArray(nuove?.calendari)) tutte.calendari = nuove.calendari; // l'elenco arriva sempre intero
   for (const g of GIORNI) tutte.orari[g] = String(tutte.orari[g] || '').trim();
   if (tutte.design) {
@@ -156,6 +174,7 @@ export function salvaImpostazioni(nuove) {
     tutte.design.colore = String(tutte.design.colore || '').trim();
     tutte.design.tema = ['chiaro', 'scuro'].includes(tutte.design.tema) ? tutte.design.tema : '';
   }
+  tutte.gestioneRichieste = normalizzaGestioneRichieste(tutte.gestioneRichieste);
   delete tutte.receptionist.personaggio;
   delete tutte.twilio.segretoImpostato;
   delete tutte.twilio.authTokenImpostato;

@@ -1,3 +1,10 @@
+const INCERTO_O_CONDIZIONALE = /\?|\b(?:forse|se|dipende|devo pensarci|ci penso|non (?:sono|ne sono) sicur[oa]|vielleicht|wenn|ich überlege)\b/u;
+
+function rispostaAffermativa(testo) {
+  if (!testo || INCERTO_O_CONDIZIONALE.test(testo)) return false;
+  return /^(?:sì|si|ok|okay|okey|d'accordo|confermo|esatto|corretto|va bene|è tutto corretto|tutto corretto|ja|genau|das stimmt|ich bestätige)(?:[, ]+(?:certo|grazie|grazie mille|perfetto|ciao|arrivederci|confermo|esatto|corretto|è tutto corretto|tutto corretto|va bene|va benissimo|gerne|danke|perfekt))*[.!]*$/u.test(testo);
+}
+
 // I marcatori del modello non bastano: serve il consenso al riepilogo precedente.
 export function consensoPrenotazione(cliente, precedente, nome) {
   const normalizza = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -8,7 +15,20 @@ export function consensoPrenotazione(cliente, precedente, nome) {
   if (!/\?/.test(riepilogo) || !/conferm|tutto (?:corretto|giusto)|è corretto|le torna|ti torna|giusto così|capito bene|stimmt|bestätig/.test(riepilogo)) return false;
   // Correzioni e ripensamenti richiedono un nuovo riepilogo.
   if (/\b(no|non|ma|però|invece|anzi|cambi\w*|spost\w*|nein|nicht|aber|sondern)\b/.test(risposta)) return false;
-  return /^(?:sì|si|ok|okay|okey|d'accordo|confermo|esatto|corretto|va bene|è tutto corretto|tutto corretto|ja|genau|das stimmt|ich bestätige)(?=$|[\s,.!])/u.test(risposta);
+  return rispostaAffermativa(risposta);
+}
+
+// Un marcatore del modello non autorizza un richiamo: deve averlo chiesto il cliente,
+// oppure deve aver accettato in modo esplicito un'offerta di richiamo appena ricevuta.
+export function consensoRichiamo(cliente, precedente = '') {
+  const normalizza = (s) => String(s || '').toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, ' ').trim();
+  const risposta = normalizza(cliente);
+  const proposta = normalizza(precedente);
+  if (!risposta || /\b(no|non|nein|nicht)\b/.test(risposta)) return false;
+  if (/\b(?:forse|se|dipende|devo pensarci|ci penso|non (?:sono|ne sono) sicur[oa]|vielleicht|wenn|ich überlege)\b/u.test(risposta)) return false;
+  if (/\b(?:richiamatemi|richiamami|chiamatemi voi|fatemi richiamare|vorrei che mi richiamaste|mi richiam(?:a|ate)(?: (?:un|una) collega)?|mi (?:faccia|fai|faccia pure|fate|può|puo|potete) richiamare(?: da (?:un|una) collega)?|(?:può|puo|potete) (?:farmi richiamare|richiamarmi)|vorrei essere richiamat[oa]|preferisco essere richiamat[oa]|voglio essere richiamat[oa])\b/.test(risposta)) return true;
+  const offerta = /\b(?:richiam\w*|collega.*chiam\w*|chiamare da (?:un|una) collega)\b/.test(proposta) && /\?/.test(proposta);
+  return offerta && rispostaAffermativa(risposta.replace(/^volentieri(?=$|[,.!])/u, 'sì').replace(/^certo(?=$|[,.!])/u, 'sì'));
 }
 
 export function congedoCliente(cliente, turno) {

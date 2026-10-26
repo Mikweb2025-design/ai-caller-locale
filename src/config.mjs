@@ -8,6 +8,11 @@ const env = join(RADICE, '.env');
 if (existsSync(env)) process.loadEnvFile(env);
 
 const numero = (v, d) => (v === undefined || v === '' ? d : Number(v));
+const limitato = (v, d, minimo, massimo) => {
+  const n = numero(v, d);
+  return Number.isFinite(n) ? Math.min(massimo, Math.max(minimo, n)) : d;
+};
+const acceso = (v, d = true) => v === undefined || v === '' ? d : !/^(?:0|false|no|off)$/i.test(String(v).trim());
 
 export const CONFIG = {
   porta: numero(process.env.PORTA, 5050),
@@ -42,6 +47,17 @@ export const CONFIG = {
   // se Claude tarda, dopo questi secondi dice "Sì, un attimo." (-1 = mai, il predefinito:
   // detto spesso suona da centralino)
   riempitivoSecondi: numero(process.env.RIEMPITIVO_S, -1),
+
+  // Tocchi molto leggeri durante STT/AI: solo al chiamante e rimossi prima della voce.
+  tastiera: {
+    attiva: acceso(process.env.TASTIERA_ATTESA, true),
+    volume: limitato(process.env.TASTIERA_VOLUME, 0.025, 0, 0.04),
+  },
+
+  // I log tecnici non contengono trascrizioni o contatti; i file più vecchi vengono rimossi.
+  log: {
+    conservazioneGiorni: limitato(process.env.LOG_CONSERVAZIONE_GIORNI, 30, 1, 365),
+  },
 
 };
 
