@@ -1,6 +1,7 @@
 // Il collegamento col motore vocale locale (motore/motore.py) e la conversione
 // tra l'audio del telefono (μ-law 8 kHz) e PCM 16 bit.
 import { CONFIG } from './config.mjs';
+import { creaAddolcitoreVoce } from './timbro.mjs';
 
 // --- G.711 μ-law ---
 const DECODIFICA = new Int16Array(256);
@@ -44,10 +45,12 @@ const campioneAttivo = () => String(impostazioni().receptionist?.voce?.campione 
 
 // Legge una frase ad alta voce: chiama alPezzo(μ-law) man mano che l'audio è pronto.
 export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it' } = {}) {
+  const campione = campioneAttivo();
+  const addolcitore = creaAddolcitoreVoce(campione);
   const r = await fetch(`${CONFIG.motore}/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ testo, voce, lingua, campione: campioneAttivo() }),
+    body: JSON.stringify({ testo, voce, lingua, campione }),
     signal: segnale,
   });
   if (!r.ok) throw new Error(`motore /tts ${r.status}`);
@@ -56,7 +59,7 @@ export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it' }
     const b = Buffer.concat([resto, Buffer.from(c)]);
     const pari = b.length & ~1;
     resto = b.subarray(pari);
-    if (pari) alPezzo(aMulaw(b.subarray(0, pari)));
+    if (pari) alPezzo(aMulaw(addolcitore.applica(b.subarray(0, pari))));
   }
 }
 
