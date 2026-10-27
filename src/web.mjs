@@ -228,7 +228,7 @@ async function chiama() {
   let senzaMicrofono = false;
   stato('consenti l\u2019uso del microfono…');
   try {
-    flusso = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: { ideal: true }, noiseSuppression: { ideal: true }, autoGainControl: { ideal: false }, channelCount: { ideal: 1 } } });
+    flusso = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: { ideal: true }, noiseSuppression: { ideal: true }, autoGainControl: { ideal: true }, channelCount: { ideal: 1 } } });
   } catch (e) {
     // senza microfono la chiamata va lo stesso: si ascolta e si scrive in chat
     senzaMicrofono = true;

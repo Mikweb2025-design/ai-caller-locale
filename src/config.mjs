@@ -39,10 +39,22 @@ export const CONFIG = {
   // Quando il cliente ha finito di parlare
   vad: {
     soglia: numero(process.env.VAD_SOGLIA, 700), // energia (RMS su 16 bit) sopra cui è voce
+    // Dal browser il microfono è più basso e il guadagno automatico non sempre c'è: soglia più bassa.
+    sogliaWeb: numero(process.env.VAD_SOGLIA_WEB, 600),
     inizioMs: numero(process.env.VAD_INIZIO_MS, 120), // voce continua per dire "sta parlando"
     silenzioMs: numero(process.env.VAD_SILENZIO_MS, 750), // silenzio dopo cui la frase è finita
     minimoMs: numero(process.env.VAD_MINIMO_MS, 250), // frasi più corte = rumore
     interruzioneMs: numero(process.env.VAD_INTERRUZIONE_MS, 500), // voce continua per interrompere il receptionist
+    interruzioneMsWeb: numero(process.env.VAD_INTERRUZIONE_MS_WEB, 350),
+    // Quanto deve essere più forte la voce (rispetto alla soglia) per zittire il receptionist.
+    // Al browser l'eco dell'altoparlante è già tolta dal browser stesso: basta poco.
+    interruzioneFattore: numero(process.env.VAD_INTERRUZIONE_FATTORE, 1.6),
+    interruzioneFattoreWeb: numero(process.env.VAD_INTERRUZIONE_FATTORE_WEB, 1.25),
+    // Dopo il silenzio la frase "resta aperta" ancora un attimo, mentre la trascrizione parte
+    // già: se il cliente riprende a parlare (una pausa in mezzo alla frase) si unisce tutto
+    // e si trascrive una volta sola. Costo: solo l'attesa della grazia, non un secondo silenzio.
+    graziaMs: numero(process.env.VAD_GRAZIA_MS, 350),
+    graziaWebMs: numero(process.env.VAD_GRAZIA_MS_WEB, 500),
   },
   // se Claude tarda, dopo questi secondi dice "Sì, un attimo." (-1 = mai, il predefinito:
   // detto spesso suona da centralino)

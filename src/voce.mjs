@@ -43,10 +43,16 @@ export async function trascrivi(pcm) {
 import { impostazioni } from './impostazioni.mjs';
 const campioneAttivo = () => String(impostazioni().receptionist?.voce?.campione || '').trim();
 
+// La catena di timbro di una telefonata: una sola per tutta la chiamata. Ricrearla a ogni
+// frase faceva ripartire da zero il livellatore e il volume saltava tra una battuta e l'altra.
+export function creaCatenaVoce() {
+  return creaAddolcitoreVoce(campioneAttivo());
+}
+
 // Legge una frase ad alta voce: chiama alPezzo(μ-law) man mano che l'audio è pronto.
-export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it' } = {}) {
+export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it', catena } = {}) {
   const campione = campioneAttivo();
-  const addolcitore = creaAddolcitoreVoce(campione);
+  const addolcitore = catena || creaAddolcitoreVoce(campione);
   const r = await fetch(`${CONFIG.motore}/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -54,16 +60,22 @@ export async function pronuncia(testo, alPezzo, { segnale, voce, lingua = 'it' }
     signal: segnale,
   });
   if (!r.ok) throw new Error(`motore /tts ${r.status}`);
-  let resto = Buffer.alloc(0);
-  for await (const c of r.body) {
-    const b = Buffer.concat([resto, Buffer.from(c)]);
-    const pari = b.length & ~1;
-    resto = b.subarray(pari);
-    if (pari) alPezzo(aMulaw(addolcitore.applica(b.subarray(0, pari))));
+  try {
+    let resto = Buffer.alloc(0);
+    for await (const c of r.body) {
+      const b = Buffer.concat([resto, Buffer.from(c)]);
+      const pari = b.length & ~1;
+      resto = b.subarray(pari);
+      if (pari) alPezzo(aMulaw(addolcitore.applica(b.subarray(0, pari))));
+    }
+    // coda dell'abbassamento di tono: senza questo l'ultima consonante si sente troncata
+    const coda = addolcitore.chiudi ? addolcitore.chiudi() : null;
+    if (coda && coda.length) alPezzo(aMulaw(coda));
+  } catch (e) {
+    // frase interrotta a metà: il pezzo rimasto nella catena non deve finire nella successiva
+    addolcitore.riparti?.();
+    throw e;
   }
-  // coda dell'abbassamento di tono: senza questo l'ultima consonante si sente troncata
-  const coda = addolcitore.chiudi ? addolcitore.chiudi() : null;
-  if (coda && coda.length) alPezzo(aMulaw(coda));
 }
 
 // Frasi fisse (saluto, riempitivo): sintetizzate una volta sola, tenute in memoria e su disco.

@@ -185,18 +185,19 @@ class CervelloApi {
   ascolta(frase, storia = []) {
     const turno = ++this.inviati;
     if (this.storia.length === 0 && storia.length) this.storia = storia.map((m) => ({ role: m.ruolo === 'cliente' ? 'user' : 'assistant', content: m.testo }));
-    this.storia.push({ role: 'user', content: frase });
+    const messaggio = { role: 'user', content: frase };
+    this.storia.push(messaggio);
     this.controllo?.abort(); // la frase precedente non serve più: si risparmia la quota
     this.controllo = new AbortController();
-    this.#richiedi(turno, this.controllo, true);
+    this.#richiedi(turno, this.controllo, true, messaggio);
     return turno;
   }
 
-  async #richiedi(turno, controllo, conRagionamentoBasso) {
+  async #richiedi(turno, controllo, conRagionamentoBasso, messaggio) {
     const { url, chiave, modello } = this.c;
     let testo = '', haParlato = false;
     try {
-      const corpo = { model: modello, stream: true, temperature: 0.7, max_tokens: 400, messages: [{ role: 'system', content: this.istruzioni }, ...this.storia] };
+      const corpo = { model: modello, stream: true, temperature: 0.55, max_tokens: 400, messages: [{ role: 'system', content: this.istruzioni }, ...this.storia] };
       if (conRagionamentoBasso && /gpt-oss/i.test(modello)) corpo.reasoning_effort = 'low'; // meno attesa prima di parlare
       const r = await fetch(`${url}/chat/completions`, {
         method: 'POST', signal: AbortSignal.any([controllo.signal, AbortSignal.timeout(30000)]),
@@ -205,7 +206,7 @@ class CervelloApi {
       });
       if (!r.ok) {
         const dettaglio = (await r.text().catch(() => '')).slice(0, 200);
-        if (r.status === 400 && corpo.reasoning_effort) return this.#richiedi(turno, controllo, false); // il modello non accetta quel parametro
+        if (r.status === 400 && corpo.reasoning_effort) return this.#richiedi(turno, controllo, false, messaggio); // il modello non accetta quel parametro
         const e = new Error(`${MESSAGGI_HTTP[r.status] || `errore ${r.status}`}${dettaglio ? ` (${dettaglio.replace(/\s+/g, ' ')})` : ''}`);
         e.limite = r.status === 429; e.chiave = r.status === 401 || r.status === 403;
         throw e;
@@ -234,7 +235,10 @@ class CervelloApi {
       this.allaFine?.(testo, turno);
     } catch (e) {
       if (controllo.signal.aborted) return; // sostituita da una frase più nuova
-      this.storia.pop(); // la frase senza risposta non resta nella storia
+      // toglie la PROPRIA frase rimasta senza risposta: un pop() cieco poteva togliere
+      // la frase del turno successivo, già arrivata nel frattempo (memoria che si perdeva).
+      const i = this.storia.indexOf(messaggio);
+      if (i >= 0) this.storia.splice(i, 1);
       this.alErrore?.(turno, e.name === 'TimeoutError' ? 'il servizio non risponde' : e.message, haParlato, e);
     }
   }

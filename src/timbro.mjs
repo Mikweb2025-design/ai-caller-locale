@@ -135,6 +135,20 @@ class VocePiuCalda {
   chiudi() {
     return this.applica(Buffer.alloc((this.L + this.SALTO) * 2));
   }
+
+  // Frase interrotta a metà: si butta quello che resta nei buffer, senza toccare il livello.
+  riparti() {
+    this.len = 0;
+    this.pos = 0;
+    this.ultimo = null;
+    this.ideale = 0;
+    this.atteso = null;
+    this.scritto = 0;
+    this.primo = true;
+    this.buf = new Float32Array(8192);
+    this.acc = new Float32Array(8192);
+    this.peso = new Float32Array(8192);
+  }
 }
 
 class LivellatoreNaturale {
@@ -217,7 +231,7 @@ function scaffale(tipo, frequenza, db, pendenza = 0.8, sr = SR) {
 
 const limita16 = (n) => Math.max(-32768, Math.min(32767, Math.round(n)));
 
-export const VERSIONE_TIMBRO = '4';
+export const VERSIONE_TIMBRO = '5';
 
 export { VocePiuCalda };
 
@@ -253,6 +267,9 @@ export function creaAddolcitoreVoce(campione, sr = SR) {
     chiudi() {
       const coda = calda.chiudi();
       return coda.length ? livellatore.applica(equalizza(coda)) : coda;
+    },
+    riparti() {
+      calda.riparti();
     },
   };
 }

@@ -358,7 +358,8 @@ function completaFraseVocale(chiamata) {
 }
 
 async function attendi(condizione, messaggio) {
-  for (let i = 0; i < 100; i++) {
+  // il turno si chiude dopo il silenzio + la grazia (fino a 500 ms dal browser)
+  for (let i = 0; i < 600; i++) {
     if (condizione()) return;
     await new Promise((r) => setTimeout(r, 2));
   }

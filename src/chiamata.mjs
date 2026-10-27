@@ -3,7 +3,7 @@
 // Funziona uguale per Twilio e per la chiamata dal browser (stesso protocollo Media Streams).
 import { CONFIG } from './config.mjs';
 import { istruzioni, salutoSegmenti, salutoCompleto, numeroNoto } from './persona.mjs';
-import { postiLiberi, postiPerIstruzioni } from './agenda.mjs';
+import { postiLiberi, postiPerIstruzioni, giornoParlato, inRoma } from './agenda.mjs';
 import { confermaAppuntamento, registraRichiamo, attaccaTelefonoRichiamo } from './strumenti.mjs';
 import { Cervello } from './cervello.mjs';
 import { consensoPrenotazione, consensoRichiamo, congedoCliente } from './consenso.mjs';
@@ -11,7 +11,7 @@ import { numeriInParole, punteggiaturaDaVoce } from './parlato.mjs';
 import { creaRegolatoreIntercalari } from './intercalari.mjs';
 import { impostazioni } from './impostazioni.mjs';
 import { estraiIntento, regoleCandidate } from './intenti.mjs';
-import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta } from './voce.mjs';
+import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta, creaCatenaVoce } from './voce.mjs';
 import { creaCodaUfficio, creaRumoreAttesa, creaSuonoContinuo, fermaAttesaPrimaDellaVoce, mescolaSuono } from './attesa.mjs';
 
 const FRAME_MS = 20;
@@ -149,6 +149,9 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   let voce = 0, muto = 0; // frame consecutivi sopra/sotto soglia
   let preRoll = [];
   let frase = [];
+  let sospesa = null; // frase finita ma ancora "aperta" un attimo: { audio, promessa, timer }
+  let grazia = []; // frame arrivati durante la grazia (possono essere l'inizio della ripresa)
+  let voceGrazia = 0;
   let turno = 0; // turno di risposta che vogliamo sentire
   let bufferTesto = '';
   let testoTurno = '';
@@ -174,6 +177,10 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   let dettoInTurno = false; // questa battuta ha prodotto qualcosa da dire al cliente
   let richiamoAppenaSalvato = false; // il RICHIAMA di questa battuta è stato registrato adesso
   let ultimoNumeroDettato = ''; // numero detto dopo "a che numero la possiamo richiamare?"
+  // Quello che il sistema ha già capito in questa telefonata: si ripete al cervello a ogni
+  // battuta, così non lo dimentica e non lo richiede (nome, motivo, giorno, email, recapito).
+  const fatti = { nome: '', motivo: '', giorno: '', ora: '', email: '', telefono: '' };
+  const dettoDalCliente = []; // le ultime frasi del cliente: servono a capire il giorno che ha detto
   let consensoRichiamoDato = false; // il cliente ha chiesto o accettato il richiamo in questa telefonata
   const statoIntento = { intento: 'altro', fonte: 'fallback', candidati: [], visti: [] };
   const gestioneRichieste = impostazioni().gestioneRichieste;
@@ -238,6 +245,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     giaDetto = false;
     clearTimeout(riempitivo);
     fermaCoda();
+    scartaSospesa();
     const avevaTastiera = tastiera.ferma();
     if (chiamata.sta_parlando || avevaTastiera) chiamata.svuota();
     if (chiamata.sta_parlando) chiamata.log(`✂ ${motivo}`);
@@ -265,22 +273,53 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   }
 
   let linguaVoce = 'it';
+  // una sola catena di timbro per tutta la telefonata: il livello non riparte da zero a ogni frase
+  const catenaVoce = creaCatenaVoce();
   function leggi(frase) {
     const segnale = annulla.signal;
     linguaVoce = rilevaLingua(frase, linguaVoce);
     const lingua = linguaVoce;
     coda = coda.then(async () => {
       if (segnale.aborted) return;
-      try { await pronunciaTesto(frase, (p) => { if (!segnale.aborted) inviaAudio(p); }, { segnale, lingua }); } catch (e) { if (!segnale.aborted) chiamata.log('errore voce', e.message); }
+      try { await pronunciaTesto(frase, (p) => { if (!segnale.aborted) inviaAudio(p); }, { segnale, lingua, catena: catenaVoce }); } catch (e) { if (!segnale.aborted) chiamata.log('errore voce', e.message); }
       if (!segnale.aborted) programmaCoda();
     });
   }
 
-  async function allaFrase(pcm) {
+  // La frase è finita (silenzio): la trascrizione parte subito, in parallelo, ma il turno
+  // resta aperto per la grazia. Se il cliente riprende a parlare (una pausa in mezzo alla
+  // frase) le due parti si uniscono e si trascrive una volta sola.
+  function sospendi(audio) {
+    scartaSospesa();
     fineTurno = Date.now();
+    const promessa = trascriviAudio(audio);
+    promessa.catch(() => {}); // l'errore lo raccoglie allaFrase
+    const s = { audio, promessa, timer: null };
+    s.timer = setTimeout(() => {
+      if (sospesa !== s) return;
+      sospesa = null;
+      const uniti = voceGrazia > 0 ? Buffer.concat([audio, ...grazia]) : audio;
+      grazia = [];
+      voceGrazia = 0;
+      if (chiudere || chiamata.chiusa) return;
+      allaFrase(uniti, promessa).catch((e) => chiamata.log('errore elaborazione frase', e.message));
+    }, chiamata.web ? v.graziaWebMs : v.graziaMs);
+    if (typeof s.timer.unref === 'function') s.timer.unref();
+    sospesa = s;
+  }
+
+  function scartaSospesa() {
+    if (sospesa) clearTimeout(sospesa.timer);
+    sospesa = null;
+    grazia = [];
+    voceGrazia = 0;
+  }
+
+  async function allaFrase(pcm, promessa = null) {
+    if (!fineTurno) fineTurno = Date.now();
     tastiera.avvia();
     let t;
-    try { t = await trascriviAudio(pcm); } catch (e) {
+    try { t = await (promessa || trascriviAudio(pcm)); } catch (e) {
       fermaAttesaPrimaDellaVoce(tastiera, () => chiamata.svuota());
       return chiamata.log('errore ascolto', e.message);
     }
@@ -304,6 +343,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
 
   function nuovoTurno(detto, registratoAdesso = false, conTastiera = false, richiamoRegistrato = false) {
     interrompi('nuova frase del cliente');
+    dettoDalCliente.push(detto);
+    if (dettoDalCliente.length > 12) dettoDalCliente.shift();
     primoAudio = true;
     silenzioDaInviare = true; // silenzio protettivo in testa alla risposta: telefono e browser, altrimenti la prima sillaba a volte si perde
     if (!fineTurno) fineTurno = Date.now();
@@ -311,10 +352,11 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     const emailDetta = emailDaVoce(detto);
     if (emailDetta) {
       emailRaccolta = emailDetta;
+      fatti.email = emailDetta;
       emailChiesta = true;
     }
     let perCervello = rispondevaEmail
-      ? `Risposta del cliente alla domanda "Le mando la conferma per email, quale indirizzo?": ${detto}`
+      ? `Risposta del cliente alla domanda "Le mando la conferma per email, quale indirizzo?": ${detto}${emailDetta ? '' : '. Non ha dato un indirizzo: non chiederlo più, fai il riepilogo e prosegui senza email.'}`
       : detto;
     attendeRispostaEmail = false;
     if (registratoAdesso) {
@@ -325,6 +367,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     if (emailRaccolta) {
       perCervello = `Stato certo: l'indirizzo email del cliente è già stato acquisito dal sistema. Non chiederlo, non richiederlo e non farlo ripetere.\n${perCervello}`;
     }
+    const stato = promemoria();
+    if (stato) perCervello = `${stato}\n${perCervello}`;
     statoIntento.candidati = regoleCandidate(detto, gestioneRichieste);
     turno = cervello.ascolta(perCervello);
     if (conTastiera) tastiera.avvia();
@@ -348,13 +392,99 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   function annotaNumeroDettato(detto) {
     if (!/\bnumero\b/i.test(ultimoReceptionist)) return;
     const numero = numeroDaVoce(detto);
-    if (numero) ultimoNumeroDettato = numero;
+    if (numero) { ultimoNumeroDettato = numero; fatti.telefono = numero; }
   }
 
   // Il sì al richiamo vale per tutta la telefonata: se il modello scrive il marcatore più tardi,
   // il consenso già dato non va perso (e il richiamo non resta appeso).
   function annotaConsensoRichiamo(detto) {
     if (consensoRichiamo(detto, ultimoReceptionist)) consensoRichiamoDato = true;
+  }
+
+  // Riga di stato messa davanti a ogni battuta: il modello non deve ricostruire a memoria
+  // cose che il sistema ha già registrato (ed era proprio lì che "dimenticava" i dati).
+  const NOMI_INTENTO = { appuntamento: 'appuntamento', preventivo_file: 'preventivo', assistenza_problema: 'assistenza', richiamata: 'richiesta di richiamo', informazioni: 'informazioni' };
+  function promemoria() {
+    const righe = [];
+    if (fatti.nome) righe.push(`nome del cliente: ${fatti.nome}`);
+    if (fatti.motivo) righe.push(`motivo: ${fatti.motivo}`);
+    if (fatti.giorno || fatti.ora) righe.push(`giorno e ora scelti: ${[fatti.giorno, fatti.ora].filter(Boolean).join(' ')}`);
+    if (fatti.email || emailRaccolta) righe.push(`email: ${emailRaccolta || fatti.email}`);
+    if (fatti.telefono || telefonoRichiamo) righe.push(`telefono: ${telefonoRichiamo || fatti.telefono}`);
+    if (confermato) righe.push('appuntamento GIÀ registrato');
+    if (richiamoId) righe.push('richiamo GIÀ registrato');
+    if (confermaInAttesa) righe.push('riepilogo in attesa del sì del cliente');
+    if (richiamoInAttesa) righe.push('richiamo in attesa del consenso esplicito');
+    // senza niente di acquisito non si aggiunge nulla: la riga serve a non perdere i dati,
+    // non a ripetere a ogni battuta quello che il cervello sa già dalla conversazione.
+    if (!righe.length) return '';
+    const intento = NOMI_INTENTO[statoIntento.intento];
+    if (intento) righe.push(`richiesta in corso: ${intento}`);
+    return `Promemoria del sistema su questa telefonata (dati già acquisiti: non richiederli, non contraddirli; cambiali solo se il cliente li cambia): ${righe.join('; ')}.`;
+  }
+
+  // Il riepilogo prima del sì lo sa fare il sistema con i dati che ha già: nome, giorno, ora,
+  // motivo. Il modello a volte lo salta e chiude subito: la telefonata va avanti lo stesso.
+  function riepilogoConferma() {
+    const { nome, giorno, ora, dettagli } = confermaInAttesa || {};
+    const quando = giorno ? giornoParlato(giorno) : '';
+    const parti = [quando, ora ? `alle ${ora}` : ''].filter(Boolean).join(' ');
+    const motivo = String(dettagli || '').replace(/\s+/g, ' ').slice(0, 110).trim();
+    if (linguaVoce === 'de') return `Also: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Passt das so für Sie?`;
+    return numeriInParole(`Allora: ${nome ? `${nome}, ` : ''}${parti}${motivo ? `, per ${motivo}` : ''}. Le torna tutto?`);
+  }
+
+  // Aggiunge una frase a quella già detta in questa battuta (senza buttare via la precedente).
+  function aggiungiAllaBattuta(parlato) {    const pulito = String(parlato || '').trim();
+    if (!pulito) return;
+    testoTurno = `${testoTurno} ${pulito}`.trim();
+    ultimoReceptionist = testoTurno;
+    dettoInTurno = true;
+    logFrase('🤖', pulito);
+    testo('receptionist', pulito);
+    leggi(pulito);
+  }
+
+  // Il giorno detto a voce ("martedì", "domani"): il modello sceglie la data da solo e a volte
+  // sbaglia di qualche giorno. Se il cliente ha nominato un giorno, vince quello.
+  const GIORNI_VOCE = { lunedi: 0, martedi: 1, mercoledi: 2, giovedi: 3, venerdi: 4, sabato: 5, domenica: 6 };
+  function giornoDellaVoce() {
+    for (let i = dettoDalCliente.length - 1; i >= 0; i--) {
+      const t = dettoDalCliente[i].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const m = t.match(/\b(domenica|lunedi|martedi|mercoledi|giovedi|venerdi|sabato|dopodomani|domani|oggi)\b/);
+      if (m) return m[1];
+    }
+    return '';
+  }
+
+  function dataDaGiornoParola(parola) {
+    const oggi = inRoma();
+    const base = Date.parse(`${oggi.iso}T12:00:00Z`);
+    const iso = (n) => new Date(base + n * 86400000).toISOString().slice(0, 10);
+    if (parola === 'oggi') return oggi.minuti < 12 * 60 ? oggi.iso : '';
+    if (parola === 'domani') return iso(1);
+    if (parola === 'dopodomani') return iso(2);
+    const voluto = GIORNI_VOCE[parola];
+    if (voluto === undefined) return '';
+    for (let n = 0; n <= 7; n++) {
+      // inRoma(): 0 = lunedì … 6 = domenica; Date.getUTCDay(): 0 = domenica
+      if (new Date(base + n * 86400000).getUTCDay() !== (voluto + 1) % 7) continue;
+      if (n === 0 && oggi.minuti >= 12 * 60) continue; // oggi è ormai passato: si intende la settimana dopo
+      return iso(n);
+    }
+    return '';
+  }
+
+  // Se il cliente ha detto "martedì" e il modello ha scritto un altro giorno, si corregge —
+  // ma solo se in quel giorno c'è davvero lo stesso orario libero (niente invenzioni).
+  function giornoCorretto(giornoModello, ora, liberi) {
+    const parola = giornoDellaVoce();
+    if (!parola) return giornoModello;
+    const giusto = dataDaGiornoParola(parola);
+    if (!giusto || giusto === giornoModello) return giornoModello;
+    if (!liberi.some((p) => p.giorno === giusto && p.ora === ora)) return giornoModello;
+    chiamata.log(`📅 giorno corretto: il cliente ha detto ${parola} (${giusto}), il modello aveva scritto ${giornoModello}`);
+    return giusto;
   }
 
   // Se il modello scrive solo i marcatori non resta niente da dire e la linea cade nel silenzio:
@@ -368,7 +498,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       return de ? 'Gerne, ich lasse Sie von einem Kollegen zurückrufen.' : 'Certo, la faccio richiamare da un collega.';
     }
     if (richiamoAppenaSalvato) return de ? 'Gerne, ein Kollege ruft Sie zurück. Kann ich sonst noch helfen?' : 'Perfetto, ho segnato il richiamo. Le serve altro?';
-    if (confermaInAttesa) return de ? 'Passt das so für Sie?' : 'Le torna tutto?';
+    if (confermaInAttesa) return riepilogoConferma();
     return de ? 'Entschuldigung, können Sie das wiederholen?' : 'Mi scusi, può ripetere?';
   }
 
@@ -449,6 +579,11 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
           const dettagli = campoAzione(a.argomenti[3], 1000);
           const emailOriginale = a.argomenti[4];
           const email = emailAzione(emailOriginale);
+          if (nome && giorno && ora) {
+            fatti.nome = nome; fatti.giorno = giorno; fatti.ora = ora;
+            if (dettagli) fatti.motivo = dettagli;
+            if (email) fatti.email = email;
+          }
           if (confermato) {
             chiamata.log('⚠️ CONFERMA ignorata: l’appuntamento di questa chiamata è già stato registrato');
           } else if (statoIntento.intento !== 'appuntamento') {
@@ -457,8 +592,20 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
           } else if (!nome || !giorno || !ora || !dettagli || !/^\d{4}-\d{2}-\d{2}$/.test(giorno) || !/^\d{1,2}:\d{2}$/.test(ora) || (emailOriginale && !email)) {
             chiamata.log('⚠️ CONFERMA ignorata: campi mancanti o non validi');
           } else if (!consensoPrenotazione(ultimoCliente, precedente, nome)) {
-            confermaInAttesa = { nome, giorno, ora, dettagli, email: email || emailRaccolta };
+            // il giorno che il cliente ha detto a voce vince su quello scritto dal modello
+            let giornoRiepilogo = giorno;
+            try {
+              giornoRiepilogo = giornoCorretto(giorno, ora, await leggiPostiLiberi());
+            } catch { /* si riepiloga il giorno del modello */ }
+            fatti.giorno = giornoRiepilogo;
+            confermaInAttesa = { nome, giorno: giornoRiepilogo, ora, dettagli, email: email || emailRaccolta };
             chiamata.log('⏸️ CONFERMA in attesa del sì al riepilogo');
+            // Il modello ha provato a chiudere senza riepilogare: il riepilogo lo dice il sistema,
+            // con i dati che ha già. Altrimenti il cliente sente "è tutto pronto" senza aver mai
+            // sentito giorno e ora, e il sì non arriva.
+            const giaRiepilogato = /torna tutto|passt das/i.test(testoTurno)
+              || (nome && /\?/.test(testoTurno) && testoTurno.toLowerCase().includes(nome.toLowerCase()));
+            if (!giaRiepilogato) aggiungiAllaBattuta(riepilogoConferma());
           } else {
             await salvaConferma({ nome, giorno, ora, dettagli, email: email || emailRaccolta }, 'con il sì al riepilogo');
           }
@@ -474,6 +621,9 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
           const dettatoDalCliente = numeroChiestoEDetto(precedente);
           const telefono = dettato || dettatoDalCliente || ultimoNumeroDettato;
           const dati = { nome: nome || 'non detto', motivo, telefono };
+          if (nome) fatti.nome = nome;
+          if (motivo) fatti.motivo = motivo;
+          if (telefono) fatti.telefono = telefono;
           const haRecapito = Boolean(telefono) || numeroNoto(chiamata.chiamante);
           if (!['assistenza_problema', 'richiamata'].includes(statoIntento.intento)) {
             richiamoInAttesa = null;
@@ -535,18 +685,24 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       return false;
     }
     const ora = String(dati.ora || '').padStart(5, '0');
-    if (!liberi.some((p) => p.giorno === dati.giorno && p.ora === ora)) {
+    const giorno = giornoCorretto(dati.giorno, ora, liberi);
+    if (!liberi.some((p) => p.giorno === giorno && p.ora === ora)) {
       confermaInAttesa = null;
-      chiamata.log(`⚠️ CONFERMA ignorata: slot non più disponibile ${dati.giorno} ${ora}`);
+      chiamata.log(`⚠️ CONFERMA ignorata: slot non più disponibile ${giorno} ${ora}`);
       return false;
     }
     confermato = true;
-    const esito = await conferma({ ...dati, ora }, chiamata);
+    const esito = await conferma({ ...dati, giorno, ora }, chiamata);
     if (!esito.ok) {
       confermato = false;
       return false;
     }
     confermaInAttesa = null;
+    fatti.nome = dati.nome || fatti.nome;
+    fatti.giorno = giorno;
+    fatti.ora = ora;
+    if (dati.dettagli) fatti.motivo = dati.dettagli;
+    if (dati.email) fatti.email = dati.email;
     chiamata.log(`✅ appuntamento registrato ${motivo}`);
     return true;
   }
@@ -557,6 +713,9 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     if (!esito.ok) return false;
     richiamoId = esito.richiamo.id;
     telefonoRichiamo = dati.telefono || '';
+    if (telefonoRichiamo) fatti.telefono = telefonoRichiamo;
+    if (dati.nome && dati.nome !== 'non detto') fatti.nome = dati.nome;
+    if (dati.motivo) fatti.motivo = dati.motivo;
     richiamoInAttesa = null;
     chiamata.log(`✅ richiamo registrato ${motivo}`);
     return true;
@@ -571,6 +730,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       const esito = await aggiornaNumero(richiamoId, numero, chiamata);
       if (esito?.ok) {
         telefonoRichiamo = numero;
+        fatti.telefono = numero;
         chiamata.log('📞 numero dettato attaccato al richiamo');
         return true;
       }
@@ -670,6 +830,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   };
 
   chiamata.alAudio = (payload) => {
+    if (chiudere || chiamata.chiusa) return;
     const pcm = daMulaw(Buffer.from(payload, 'base64'));
     let somma = 0;
     for (let i = 0; i < pcm.length; i += 2) { const s = pcm.readInt16LE(i); somma += s * s; }
@@ -677,12 +838,32 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     // Mentre il receptionist parla serve una voce più forte e più lunga per interromperlo:
     // l'eco dell'altoparlante (browser senza cuffie) o un colpo di tosse non devono zittirlo.
     const sopra = chiamata.sta_parlando;
-    const forte = rms > v.soglia * (sopra ? 1.6 : 1);
+    const fattore = sopra ? (chiamata.web ? v.interruzioneFattoreWeb : v.interruzioneFattore) : 1;
+    const forte = rms > (chiamata.web ? v.sogliaWeb : v.soglia) * fattore;
+    // Frase finita ma ancora in grazia: se il cliente riprende, si unisce alla stessa frase.
+    if (sospesa) {
+      grazia.push(pcm);
+      voceGrazia = forte ? voceGrazia + 1 : 0;
+      if (voceGrazia * FRAME_MS >= v.inizioMs) {
+        const ripresa = sospesa;
+        sospesa = null;
+        clearTimeout(ripresa.timer);
+        parlando = true;
+        muto = 0;
+        voce = 0;
+        frase = [Buffer.concat([ripresa.audio, ...grazia])];
+        grazia = [];
+        voceGrazia = 0;
+        if (chiamata.sta_parlando || tastiera.inCorso) interrompi('il cliente riprende la frase');
+      }
+      return;
+    }
     if (!parlando) {
       preRoll.push(pcm);
-      if (preRoll.length > 15) preRoll.shift();
+      if (preRoll.length > 25) preRoll.shift(); // 500 ms: l'attacco della parola non si perde
       voce = forte ? voce + 1 : 0;
-      if (voce * FRAME_MS >= (sopra ? v.interruzioneMs : v.inizioMs)) {
+      const sogliaInizioMs = sopra ? (chiamata.web ? v.interruzioneMsWeb : v.interruzioneMs) : v.inizioMs;
+      if (voce * FRAME_MS >= sogliaInizioMs) {
         parlando = true;
         muto = 0;
         frase = [...preRoll];
@@ -699,14 +880,13 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       voce = 0;
       const audio = Buffer.concat(frase);
       frase = [];
-      if (audio.length / 16 >= v.minimoMs + v.silenzioMs) {
-        allaFrase(audio).catch((e) => chiamata.log('errore elaborazione frase', e.message));
-      }
+      if (audio.length / 16 >= v.minimoMs + v.silenzioMs) sospendi(audio);
     }
   };
 
   chiamata.allaFine = async () => {
     interrompi('fine chiamata');
+    scartaSospesa();
     cervello?.chiudi();
     if (ritardi.length) chiamata.log('⏱ ritardi (fine frase → primo audio):', ritardi.join(', '), 'ms');
   };
