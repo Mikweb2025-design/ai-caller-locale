@@ -167,9 +167,16 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     <label class="check"><input type="checkbox" data-k="receptionist.scherza"> <strong>Scherza con il cliente</strong> <small>attivo: si adatta al suo umorismo; spento: resta cordiale e professionale, senza battute</small></label>
     <div style="margin-top:12px"><label>Intercalari <small>(espressioni naturali, separate da virgola: ne usa una entro le prime due risposte, poi non più di una ogni tre. Vuoto = nessuno)</small></label><input data-k="receptionist.intercalare" placeholder="es. allora, un attimo solo, vediamo"></div>
     <h2 style="margin-top:18px">Lingue</h2>
-    <p class="aiuto">L'italiano c'è sempre. Con il tedesco il receptionist risponde nella lingua di chi chiama (italiano o Deutsch), anche dentro la stessa telefonata.</p>
-    <label class="check"><input type="checkbox" data-k="lingue.tedesco"> Rispondi anche in tedesco</label>
-    <div style="margin-top:12px"><label>Saluto in tedesco <small>(si aggiunge a quello italiano; {nome} = nome del receptionist)</small></label><input data-k="lingue.salutoTedesco"></div>
+    <p class="aiuto">L'italiano c'è sempre. Con <strong>Multilingua</strong> il receptionist risponde nella lingua di chi chiama — inglese, tedesco, spagnolo e francese — anche dentro la stessa telefonata. <strong>Lingua di default</strong>: il saluto e le prime frasi partono in quella lingua, poi il receptionist segue chi chiama. Il tedesco si può attivare anche da solo.</p>
+    <label class="check"><input type="checkbox" data-k="lingue.multilingua"> <strong>Multilingua</strong> <small>inglese, tedesco, spagnolo e francese</small></label>
+    <label class="check" style="margin-top:8px"><input type="checkbox" data-k="lingue.tedesco"> Solo tedesco <small>(se Multilingua è spento)</small></label>
+    <div style="margin-top:12px"><label>Lingua di default <small>(saluto e prime frasi; se non è tra le lingue attive resta l'italiano)</small></label><select data-k="lingue.predefinita"><option value="it">Italiano</option><option value="en">Inglese</option><option value="de">Tedesco</option><option value="es">Spagnolo</option><option value="fr">Francese</option></select></div>
+    <div class="griglia" style="margin-top:12px">
+      <div><label>Saluto in inglese <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoInglese"></div>
+      <div><label>Saluto in tedesco <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoTedesco"></div>
+      <div><label>Saluto in spagnolo <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoSpagnolo"></div>
+      <div><label>Saluto in francese <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoFrancese"></div>
+    </div>
     <div style="margin-top:12px"><label>Saluto <small>(vuoto = "&lt;attività&gt;, buongiorno! Sono &lt;nome&gt;, mi dica.")</small></label><input data-k="receptionist.saluto"></div>
     <div style="margin-top:12px"><label>Istruzioni in più <small>(in italiano, es. "Il venerdì pomeriggio niente revisioni")</small></label><textarea data-k="receptionist.note"></textarea></div>
   </section>

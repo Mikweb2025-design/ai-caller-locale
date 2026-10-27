@@ -6,8 +6,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COPIONI } from './copione.mjs';
 
-// lingua del copione → lingua del motore vocale (it|de); il resto si legge in italiano
-const LINGUE = { tedesco: 'de' };
+// lingua del copione → lingua del motore vocale (it|en|de|es|fr); il resto si legge in italiano
+const LINGUE = { tedesco: 'de', inglese: 'en', spagnolo: 'es', francese: 'fr' };
 
 const qui = dirname(fileURLToPath(import.meta.url));
 

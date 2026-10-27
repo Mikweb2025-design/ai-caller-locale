@@ -62,5 +62,33 @@ export const COPIONI = {
     'Ja, das ist alles. Ich schicke Ihnen das Logo per E-Mail.',
     'Nein danke. Auf Wiederhören!',
   ],
+  // le stesse battute in inglese, spagnolo e francese: servono il multilingua attivo
+  inglese: [
+    'Good morning! I would like some information about laser engraving.',
+    'We need two hundred wooden keychains with our logo, for a company event.',
+    'I have the logo as a PDF. Is that okay?',
+    'Tuesday at ten works perfectly.',
+    'My name is Anna Weber, from Weber Events.',
+    'Yes, that is all. I will send you the logo by email.',
+    'No, thank you. Goodbye!',
+  ],
+  spagnolo: [
+    '¡Buenos días! Quería información sobre grabados láser.',
+    'Necesitamos doscientos llaveros de madera con nuestro logo, para un evento de empresa.',
+    'Tengo el logo en PDF. ¿Está bien?',
+    'El martes a las diez me viene perfecto.',
+    'Me llamo Anna Weber, de Weber Events.',
+    'Sí, eso es todo. Le envío el logo por correo.',
+    'No, gracias. ¡Adiós!',
+  ],
+  francese: [
+    'Bonjour ! Je voudrais des informations sur la gravure laser.',
+    'Nous avons besoin de deux cents porte-clés en bois avec notre logo, pour un événement d’entreprise.',
+    'J’ai le logo en PDF. C’est bon ?',
+    'Mardi à dix heures, c’est parfait.',
+    'Je m’appelle Anna Weber, de Weber Events.',
+    'Oui, c’est tout. Je vous envoie le logo par e-mail.',
+    'Non, merci. Au revoir !',
+  ],
 };
 export const COPIONE = COPIONI.base;

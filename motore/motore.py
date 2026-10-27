@@ -286,7 +286,7 @@ def lavoratore_stt(richieste, risposte, genitore):
             if STT_MLX:
                 testo = modello.generate(mx.array(a)).text
             else:
-                segmenti, _ = modello.transcribe(a, language='it', beam_size=1, vad_filter=False,
+                segmenti, _ = modello.transcribe(a, language=None, beam_size=1, vad_filter=False,
                                                  condition_on_previous_text=False)
                 testo = ' '.join(x.text.strip() for x in segmenti)
         except Exception as e:  # audio troppo corto o strano: come se non avesse detto niente
@@ -316,7 +316,7 @@ def a_8k(audio):
     return (np.clip(a, -1, 1) * 32767).astype('<i2').tobytes()
 
 
-LINGUE = {'it': 'italian', 'de': 'german'}  # lingua della frase → lingua di Qwen3-TTS
+LINGUE = {'it': 'italian', 'de': 'german', 'en': 'english', 'es': 'spanish', 'fr': 'french'}  # lingua della frase → lingua di Qwen3-TTS
 
 
 def parla(testo, nome_voce=None, lingua='italian', rif=None, seme=None):

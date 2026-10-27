@@ -9,7 +9,7 @@ import { Cervello } from './cervello.mjs';
 import { consensoPrenotazione, consensoRichiamo, congedoCliente } from './consenso.mjs';
 import { numeriInParole, punteggiaturaDaVoce } from './parlato.mjs';
 import { creaRegolatoreIntercalari } from './intercalari.mjs';
-import { impostazioni } from './impostazioni.mjs';
+import { impostazioni, lingueAttive, linguaPredefinita } from './impostazioni.mjs';
 import { estraiIntento, regoleCandidate } from './intenti.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta, creaCatenaVoce } from './voce.mjs';
 import { creaCodaUfficio, creaRumoreAttesa, creaSuonoContinuo, fermaAttesaPrimaDellaVoce, mescolaSuono } from './attesa.mjs';
@@ -24,11 +24,51 @@ const silenzioAvvio = () => Buffer.alloc(SILENZIO_AVVIO_MS * 8, 0xff);
 const SILENZIO_TURNO_MS = 200;
 const silenzioTurno = () => Buffer.alloc(SILENZIO_TURNO_MS * 8, 0xff);
 export const RIEMPITIVO = 'Sì, un attimo.';
+export const RIEMPITIVI = { it: RIEMPITIVO, de: 'Ja, einen Moment.', en: 'One moment, please.', es: 'Sí, un momento.', fr: 'Oui, un instant.' };
+
+// Le frasi fisse che il sistema dice da solo (riepilogo, richiamo, ripetere) nella lingua
+// della telefonata: il modello tace o sbaglia, queste restano sempre corrette.
+const FRASI = {
+  de: {
+    riepilogo: (nome, parti, motivo) => `Also: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Passt das so für Sie?`,
+    richiamoSenzaNumero: 'Gerne, ich lasse Sie zurückrufen. Unter welcher Nummer?',
+    richiamo: 'Gerne, ich lasse Sie von einem Kollegen zurückrufen.',
+    richiamoFatto: 'Gerne, ein Kollege ruft Sie zurück. Kann ich sonst noch helfen?',
+    ripeti: 'Entschuldigung, können Sie das wiederholen?',
+    email: 'Ich schicke Ihnen die Bestätigung per E-Mail. Wie lautet Ihre E-Mail-Adresse?',
+  },
+  en: {
+    riepilogo: (nome, parti, motivo) => `So: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Does that work for you?`,
+    richiamoSenzaNumero: 'Of course, I can have a colleague call you back. What number should we use?',
+    richiamo: 'Of course, I will have a colleague call you back.',
+    richiamoFatto: 'Perfect, I have noted the callback. Is there anything else?',
+    ripeti: 'Sorry, could you repeat that?',
+    email: 'I will send you the confirmation by email. What is your email address?',
+  },
+  es: {
+    riepilogo: (nome, parti, motivo) => `Entonces: ${[nome, parti, motivo].filter(Boolean).join(', ')}. ¿Le viene bien?`,
+    richiamoSenzaNumero: 'Claro, puedo pedir a un compañero que le llame. ¿A qué número le llamamos?',
+    richiamo: 'Claro, pediré a un compañero que le llame.',
+    richiamoFatto: 'Perfecto, he anotado el aviso. ¿Necesita algo más?',
+    ripeti: 'Perdone, ¿puede repetirlo?',
+    email: 'Le envío la confirmación por correo electrónico. ¿Cuál es su dirección de correo?',
+  },
+  fr: {
+    riepilogo: (nome, parti, motivo) => `Donc : ${[nome, parti, motivo].filter(Boolean).join(', ')}. Ça vous convient ?`,
+    richiamoSenzaNumero: 'Bien sûr, je peux demander à un collègue de vous rappeler. À quel numéro ?',
+    richiamo: 'Bien sûr, je demande à un collègue de vous rappeler.',
+    richiamoFatto: 'Parfait, j’ai noté le rappel. Autre chose ?',
+    ripeti: 'Pardon, pouvez-vous répéter ?',
+    email: 'Je vous envoie la confirmation par e-mail. Quelle est votre adresse e-mail ?',
+  },
+};
 
 // Claude scritto con i marcatori: quali azioni ci sono e cosa resta da dire.
-function separa(testo) {
+// I numeri si sciolgono in parole solo in italiano: negli altri TTS li leggono bene così.
+function separa(testo, lingua = 'it') {
   const azioni = [...testo.matchAll(/<<\s*(CONFERMA|RICHIAMA|FINE)\s*(?:\|([^>]*))?>>/g)].map(([, tipo, a]) => ({ tipo, argomenti: (a || '').split('|').map((x) => x.trim()) }));
-  const parlato = punteggiaturaDaVoce(numeriInParole(testo.replace(/<<[^>]*(?:>>|$)/g, '').replace(/\[[^\]]*\]/g, '').replace(/[*_#`]/g, '')));
+  const senzaMarcatori = testo.replace(/<<[^>]*(?:>>|$)/g, '').replace(/\[[^\]]*\]/g, '').replace(/[*_#`]/g, '');
+  const parlato = punteggiaturaDaVoce(lingua === 'it' ? numeriInParole(senzaMarcatori) : senzaMarcatori);
   return { azioni, parlato };
 }
 
@@ -91,13 +131,34 @@ const ITALIANO = /[àèéìòù]|\b(che|non|per|sono|il|la|lo|gli|le|un|una|di|d
 // Parole che distinguono il tedesco dall'italiano (non quelle uguali nelle due lingue).
 const TEDESCO = /[äöüß]|\b(ich|sie|wir|ihr|ihre|ihnen|nicht|und|der|die|das|ein|eine|ist|sind|haben|habe|bitte|danke|guten|tag|termin|gerne|ja|nein|wann|möchte|moechte|können|koennen|kann|uhr|montag|dienstag|mittwoch|donnerstag|freitag|auch|dann|wie|für|mit|noch|hier|zu|von|bei|dem|den|auf|aber|oder|gut|schön|hallo|wieder|sehen|ihnen|mir|mich|dich|machen|brauche|brauchen|wollen|will|frei|belegt|herr|frau|termine|montage|gern|vielen|dank|perfekt|wunderbar|leider|einen|moment|ordnung|wiedersehen|zeit|name|nummer|sehr|passt|stück)\b/gi;
 const SOLO_ITALIANO = /[àèéìòù]|\b(che|non|per|sono|il|la|lo|gli|le|un|una|di|con|mi|ti|si|ci|ho|alle|ma|come|quale|va|bene|grazie|buongiorno|perfetto|certo|vorrei|appuntamento|mattina|pomeriggio|piacere|buona|giornata|arrivederci|ciao|prego|mezzogiorno|signor|signora|dodici|dieci|undici|quattordici)\b/gi;
-export function rilevaLingua(testo, precedente = 'it') {
-  const de = (testo.match(TEDESCO) || []).length, it = (testo.match(SOLO_ITALIANO) || []).length;
-  if (de === 0 && it === 0) return precedente; // frase cortissima: resta nella lingua di prima
-  return de > it ? 'de' : 'it';
+// Inglese, spagnolo e francese: solo parole e lettere che non si confondono con l'italiano.
+const INGLESE_PAROLE = /\b(?:the|this|that|these|those|there|here|you|your|yours|we|our|i|my|me|is|are|am|was|were|be|been|have|has|had|do|does|did|can|could|would|should|will|shall|may|might|must|please|thanks|thank|hello|hi|good|morning|afternoon|evening|appointment|book|booking|schedule|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|need|want|like|help|with|for|from|about|when|what|where|which|who|how|not|yes|sorry|sure|okay|speak|speaking|name|number|price|email|send|file|material|quantity|laser|cut|engrave|bye|goodbye|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half|o'clock)\b/gi;
+const SPAGNOLO_PAROLE = /[ñ¿¡]|\b(?:el|los|las|una|unos|unas|del|al|es|son|está|están|estoy|tengo|quiero|necesito|puedo|puede|podría|para|por|con|sin|muy|también|pero|porque|cuando|dónde|cómo|qué|quién|hola|buenos|buenas|días|tardes|gracias|favor|hablar|habla|llamo|nombre|número|cita|reserva|mañana|hoy|hora|precio|correo|enviar|archivo|material|cantidad|láser|cortar|grabar|adiós|hasta|luego|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|media|cuarto)\b/gi;
+const FRANCESE_PAROLE = /[çœ]|\b(?:le|les|des|une|du|au|aux|est|sont|je|tu|il|elle|nous|vous|ils|elles|mon|ma|mes|votre|vos|notre|nos|pour|par|avec|sans|très|aussi|mais|quand|où|comment|quoi|qui|bonjour|bonsoir|salut|merci|plaît|parler|parlez|appelle|nom|numéro|rendez-vous|demain|aujourd'hui|heure|heures|prix|courriel|envoyer|fichier|matériau|quantité|couper|graver|voudrais|aimerais|revoyure|bonne|deux|trois|quatre|cinq|sept|huit|neuf|dix|onze|douze|demie)\b/gi;
+const MARCATORI = { it: SOLO_ITALIANO, de: TEDESCO, en: INGLESE_PAROLE, es: SPAGNOLO_PAROLE, fr: FRANCESE_PAROLE };
+
+export function rilevaLingua(testo, precedente = 'it', attive = null) {
+  const lingue = attive instanceof Set ? attive : lingueAttive();
+  const frase = String(testo || '');
+  const punteggi = {};
+  let migliore = 'it', massimo = 0;
+  for (const lingua of lingue) {
+    const espressione = MARCATORI[lingua];
+    if (!espressione) continue;
+    const n = (frase.match(espressione) || []).length;
+    punteggi[lingua] = n;
+    if (n > massimo) { massimo = n; migliore = lingua; }
+  }
+  if (massimo === 0) return lingue.has(precedente) ? precedente : 'it'; // frase cortissima: resta nella lingua di prima
+  // a parità vince la lingua di prima: la frase non fa saltare la telefonata da una lingua all'altra
+  if (punteggi[precedente] === massimo) return precedente;
+  return migliore;
 }
 export function nonItaliano(frase) {
   if (ITALIANO.test(frase) || /[äöüß]|\b(ich|wir|sie|nicht|und|bitte|danke|guten|termin|gerne|ja|nein|haben)\b/i.test(frase)) return false;
+  // Con una seconda lingua attiva le frasi in quella lingua sono clienti veri, non eco: passano.
+  const attive = lingueAttive();
+  if (attive.size > 1 && rilevaLingua(frase, 'it', attive) !== 'it') return false;
   const parole = frase.toLowerCase().replace(/[^a-z' ]/g, ' ').split(/\s+/).filter(Boolean);
   // Le frasi corte sono quasi sempre eco o rumore; un cliente inglese vero parla più a lungo e deve arrivare al receptionist
   // (che si scusa in italiano): sopra le quattro parole serve quasi solo inglese da eco ("Yeah, we're here, that's it, it's").
@@ -272,7 +333,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     chiamata.marca();
   }
 
-  let linguaVoce = 'it';
+  let linguaVoce = linguaPredefinita();
   // una sola catena di timbro per tutta la telefonata: il livello non riparte da zero a ogni frase
   const catenaVoce = creaCatenaVoce();
   function leggi(frase) {
@@ -374,7 +435,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     if (conTastiera) tastiera.avvia();
     if (CONFIG.riempitivoSecondi >= 0) {
       riempitivo = setTimeout(async () => {
-        const audio = await fraseInCache(RIEMPITIVO).catch(() => null);
+        const audio = await fraseInCache(RIEMPITIVI[linguaVoce] || RIEMPITIVO).catch(() => null);
         if (audio && primoAudio) { chiamata.log('🫧 riempitivo'); inviaAudio(audio, true); primoAudio = true; }
       }, CONFIG.riempitivoSecondi * 1000);
     }
@@ -430,7 +491,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     const quando = giorno ? giornoParlato(giorno) : '';
     const parti = [quando, ora ? `alle ${ora}` : ''].filter(Boolean).join(' ');
     const motivo = String(dettagli || '').replace(/\s+/g, ' ').slice(0, 110).trim();
-    if (linguaVoce === 'de') return `Also: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Passt das so für Sie?`;
+    const f = FRASI[linguaVoce];
+    if (f) return f.riepilogo(nome, parti, motivo);
     return numeriInParole(`Allora: ${nome ? `${nome}, ` : ''}${parti}${motivo ? `, per ${motivo}` : ''}. Le torna tutto?`);
   }
 
@@ -490,16 +552,16 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   // Se il modello scrive solo i marcatori non resta niente da dire e la linea cade nel silenzio:
   // chi chiama crede che la telefonata si sia bloccata. Meglio una frase di servizio.
   function fraseDiRipiego() {
-    const de = linguaVoce === 'de';
+    const f = FRASI[linguaVoce];
     if (richiamoInAttesa) {
       if (!richiamoInAttesa.telefono && !numeroNoto(chiamata.chiamante)) {
-        return de ? 'Gerne, ich lasse Sie zurückrufen. Unter welcher Nummer?' : 'Certo, la faccio richiamare da un collega. A che numero la possiamo richiamare?';
+        return f ? f.richiamoSenzaNumero : 'Certo, la faccio richiamare da un collega. A che numero la possiamo richiamare?';
       }
-      return de ? 'Gerne, ich lasse Sie von einem Kollegen zurückrufen.' : 'Certo, la faccio richiamare da un collega.';
+      return f ? f.richiamo : 'Certo, la faccio richiamare da un collega.';
     }
-    if (richiamoAppenaSalvato) return de ? 'Gerne, ein Kollege ruft Sie zurück. Kann ich sonst noch helfen?' : 'Perfetto, ho segnato il richiamo. Le serve altro?';
+    if (richiamoAppenaSalvato) return f ? f.richiamoFatto : 'Perfetto, ho segnato il richiamo. Le serve altro?';
     if (confermaInAttesa) return riepilogoConferma();
-    return de ? 'Entschuldigung, können Sie das wiederholen?' : 'Mi scusi, può ripetere?';
+    return f ? f.ripeti : 'Mi scusi, può ripetere?';
   }
 
   function collegaCervello() {
@@ -532,7 +594,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       chiamata.log(`🎯 ${riconosciuto.intento} (${riconosciuto.fonte}${candidati.length ? `; candidati: ${candidati.join(', ')}` : ''})`);
       // Una sola sintesi per tutta la battuta: Qwen conserva l'arco naturale tra virgole,
       // punti e domanda. Spezzare ogni frase faceva ripartire il tono da zero e suonava robotico.
-      const separata = separa(riconosciuto.testo);
+      const separata = separa(riconosciuto.testo, linguaVoce);
       const primaConferma = separata.azioni.find((a) => a.tipo === 'CONFERMA');
       if (primaConferma && emailRaccolta) primaConferma.argomenti[4] = emailRaccolta;
       // Il modello può tentare di chiudere la prenotazione appena riceve il motivo. Se nel pannello
@@ -541,9 +603,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
         bufferTesto = '';
         emailChiesta = true;
         attendeRispostaEmail = true;
-        const domanda = linguaVoce === 'de'
-          ? 'Ich schicke Ihnen die Bestätigung per E-Mail. Wie lautet Ihre E-Mail-Adresse?'
-          : 'Le mando la conferma per email, quale indirizzo?';
+        const domanda = FRASI[linguaVoce]?.email || 'Le mando la conferma per email, quale indirizzo?';
         emetti(domanda, n);
         ultimoReceptionist = testoTurno.trim();
         logFrase('🤖', ultimoReceptionist);

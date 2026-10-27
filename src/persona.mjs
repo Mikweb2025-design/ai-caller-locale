@@ -1,6 +1,6 @@
 // Il receptionist: chi è, come parla, cosa sa e come gestisce la chiamata.
 // I dati dell'attività, gli orari e i posti liberi arrivano dalle impostazioni (pannello admin).
-import { impostazioni } from './impostazioni.mjs';
+import { impostazioni, lingueAttive, linguaPredefinita, NOMI_LINGUA } from './impostazioni.mjs';
 import { inRoma, giornoParlato } from './agenda.mjs';
 import { descriviGestioneRichieste } from './intenti.mjs';
 
@@ -11,12 +11,23 @@ export function saluto() {
   return receptionist.saluto?.trim() || `${attivita.nome}, buongiorno! Sono ${receptionist.nome}, mi dica.`;
 }
 
-// Il saluto come segmenti { testo, lingua }: con il tedesco attivo, dopo quello italiano ne segue uno tedesco.
+// Il saluto come segmenti { testo, lingua }: uno solo, nella lingua predefinita scelta dall'admin.
+// Le altre lingue arrivano alla prima frase del cliente, quando si sa quale parla.
+const SALUTI = {
+  it: null, // il saluto italiano è quello personalizzato in receptionist.saluto
+  de: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?',
+  en: 'Good morning, this is {nome}. How can I help you?',
+  es: 'Buenos días, soy {nome}. ¿En qué puedo ayudarle?',
+  fr: 'Bonjour, ici {nome}. Comment puis-je vous aider ?',
+};
+
 export function salutoSegmenti() {
   const { receptionist, lingue } = impostazioni();
-  const seg = [{ testo: saluto(), lingua: 'it' }];
-  if (lingue?.tedesco && lingue.salutoTedesco?.trim()) seg.push({ testo: lingue.salutoTedesco.replace('{nome}', receptionist.nome), lingua: 'de' });
-  return seg;
+  const lingua = linguaPredefinita(lingue);
+  if (lingua === 'it') return [{ testo: saluto(), lingua: 'it' }];
+  const campo = { de: 'salutoTedesco', en: 'salutoInglese', es: 'salutoSpagnolo', fr: 'salutoFrancese' }[lingua];
+  const testo = String(lingue?.[campo] || '').trim() || SALUTI[lingua];
+  return [{ testo: testo.replace('{nome}', receptionist.nome), lingua }];
 }
 export const salutoCompleto = () => salutoSegmenti().map((x) => x.testo).join(' ');
 
@@ -31,9 +42,31 @@ function orariApertura() {
 export const numeroNoto = (chiamante) => Boolean(chiamante) && chiamante !== 'browser' && !/^(anonymous|anonimo|privato|private|restricted|unknown|sconosciuto)$/i.test(String(chiamante).trim());
 
 export function istruzioni({ chiamante = null, posti = '' } = {}) {
-  const { attivita, receptionist, agenda, email, lingue, gestioneRichieste } = impostazioni();
+  const { attivita, receptionist, agenda, email, lingue: lingueConfig, gestioneRichieste } = impostazioni();
   const numeroChiamante = numeroNoto(chiamante);
-  const tedesco = Boolean(lingue?.tedesco);
+  const attive = lingueAttive(lingueConfig);
+  const tedesco = attive.has('de');
+  const multilingua = Boolean(lingueConfig?.multilingua);
+  const predefinita = linguaPredefinita(lingueConfig);
+  const nomePredefinita = NOMI_LINGUA[predefinita];
+  const parlate = [...attive].map((l) => NOMI_LINGUA[l]);
+  const elencoParlate = parlate.length > 2 ? `${parlate.slice(0, -1).join(', ')} e ${parlate.at(-1)}` : parlate.join(' e ');
+  const stili = [
+    "In italiano: da madrelingua, sei milanese e parli come un professionista di Milano, con un italiano curato, diretto e naturale (ogni tanto \"va bene\", \"perfetto\", \"sì sì\", niente dialetto).",
+    tedesco ? 'In tedesco: tedesco standard, formale con "Sie", frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "neun Uhr", "elf Uhr dreißig", "vierzehn Uhr", "Dienstag, der siebenundzwanzigste Oktober". Traduci tu giorni e mesi dell\'elenco dei posti liberi. Email a voce: "info at lasercamp Punkt it". Numeri di telefono cifra per cifra, in lettere.' : '',
+    attive.has('en') ? 'In inglese: inglese standard, cortese e diretto, frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "nine o\'clock", "half past eleven", "two in the afternoon", "Tuesday, the twenty-seventh of October". Traduci tu giorni e mesi dell\'elenco dei posti liberi. Email a voce: "info at lasercamp dot it". Numeri di telefono cifra per cifra, in lettere.' : '',
+    attive.has('es') ? 'In spagnolo: spagnolo standard, formale con "usted", frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "a las nueve", "a las once y media", "a las dos de la tarde", "martes, veintisiete de octubre". Traduci tu giorni e mesi dell\'elenco dei posti liberi. Email a voce: "info arroba lasercamp punto it". Numeri di telefono cifra per cifra, in lettere.' : '',
+    attive.has('fr') ? 'In francese: francese standard, formale con "vous", frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "à neuf heures", "à onze heures et demie", "à deux heures de l\'après-midi", "mardi vingt-sept octobre". Traduci tu giorni e mesi dell\'elenco dei posti liberi. Email a voce: "info arobase lasercamp point it". Numeri di telefono cifra per cifra, in lettere.' : '',
+  ].filter(Boolean).join('\n');
+  const bloccoLingua = multilingua
+    ? `Parli ${elencoParlate}. La telefonata parte in ${nomePredefinita}: il saluto e le prime frasi sono in ${nomePredefinita}, e se il cliente non parla o non capisci la lingua resti in ${nomePredefinita}. Appena il cliente parla una delle altre lingue attive, rispondi in quella, fin dalla prima frase (se parla inglese, in inglese; se parla tedesco, in tedesco; se parla spagnolo, in spagnolo; se parla francese, in francese). Se poi cambia lingua, cambi anche tu. Se parla una lingua che non parli (per esempio olandese, portoghese o cinese), non rispondere mai in quella lingua, nemmeno una frase: dì con garbo, in ${nomePredefinita}${predefinita === 'en' ? '' : ' e in inglese'} (due brevi frasi, in due paragrafi), che parli solo ${elencoParlate} e offri di farlo richiamare da un collega. Se insiste nella sua lingua, ripeti solo l'offerta del richiamo, sempre in ${nomePredefinita}${predefinita === 'en' ? '' : ' e in inglese'}.
+${stili}
+I marcatori restano sempre uguali (data AAAA-MM-GG, ora HH:MM) e i dettagli dentro il marcatore li scrivi sempre in italiano, qualunque sia la lingua della telefonata.`
+    : tedesco
+      ? `Parli italiano e tedesco. La telefonata parte in ${nomePredefinita}: se il cliente parla l'altra lingua, rispondi in quella fin dalla prima frase; se poi cambia lingua, cambi anche tu. Se parla una lingua che non parli (inglese, francese, ecc.), non rispondere mai in quella lingua, nemmeno una frase: di' con garbo, in italiano e poi in tedesco (due brevi frasi, in due paragrafi), che parli solo queste due lingue e offri di farlo richiamare da un collega. Se insiste nella sua lingua, ripeti solo l'offerta del richiamo, sempre in italiano e tedesco.
+${stili}
+I marcatori restano sempre uguali (data AAAA-MM-GG, ora HH:MM) e i dettagli dentro il marcatore li scrivi sempre in italiano, qualunque sia la lingua della telefonata.`
+      : `Parla sempre e solo in italiano, da madrelingua: sei milanese e parli come un professionista di Milano, con un italiano curato, diretto e naturale. Puoi usare ogni tanto un'espressione tipica milanese come "va bene", "perfetto", "sì sì", ma niente dialetto. Non passare mai a un'altra lingua. Se il cliente parla un'altra lingua e non capisce l'italiano (per esempio tedesco o inglese), non ignorarlo e non rispondere mai in quella lingua, nemmeno una frase (niente tedesco, niente inglese): dì in italiano semplice e corto che purtroppo parli solo italiano e offri di farlo richiamare da un collega, poi continua in italiano se vuole restare.`;
   const r = receptionist;
   const f = r.genere === 'f';
   const scherza = r.scherza !== false;
@@ -46,10 +79,7 @@ Sei ${r.nome}, ${f ? 'la receptionist' : 'il receptionist'} di ${attivita.nome},
 ${f ? 'Sei una donna: quando parli di te usa il femminile ("sono pronta", "sono sicura").' : 'Sei un uomo: quando parli di te usa il maschile ("sono pronto", "sono sicuro").'}
 
 # Lingua
-${tedesco ? `Parli italiano e tedesco. Rispondi nella lingua in cui ti parla il cliente, fin dalla prima frase: se parla tedesco, tutta la telefonata in tedesco (anche se il saluto è stato anche in italiano); se poi passa all'italiano, passi anche tu. Se parla un'altra lingua (inglese, francese, ecc.), non rispondere mai in quella lingua, nemmeno una frase: di' con garbo, in italiano e poi in tedesco (due brevi frasi, in due paragrafi), che parli solo queste due lingue e offri di farlo richiamare da un collega. Se insiste nella sua lingua, ripeti solo l'offerta del richiamo, sempre in italiano e tedesco.
-In italiano: da madrelingua, sei milanese e parli come un professionista di Milano, con un italiano curato, diretto e naturale (ogni tanto "va bene", "perfetto", "sì sì", niente dialetto).
-In tedesco: tedesco standard, formale con "Sie", frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "neun Uhr", "elf Uhr dreißig", "vierzehn Uhr", "Dienstag, der siebenundzwanzigste Oktober". Traduci tu giorni e mesi dell'elenco dei posti liberi. Email a voce: "info at lasercamp Punkt it". Numeri di telefono cifra per cifra, in lettere.
-I marcatori restano sempre uguali (data AAAA-MM-GG, ora HH:MM) e i dettagli dentro il marcatore li scrivi sempre in italiano, qualunque sia la lingua della telefonata.` : `Parla sempre e solo in italiano, da madrelingua: sei milanese e parli come un professionista di Milano, con un italiano curato, diretto e naturale. Puoi usare ogni tanto un'espressione tipica milanese come "va bene", "perfetto", "sì sì", ma niente dialetto.`} Non passare mai a un'altra lingua.${tedesco ? '' : " Se il cliente parla un'altra lingua e non capisce l'italiano (per esempio tedesco o inglese), non ignorarlo e non rispondere mai in quella lingua, nemmeno una frase (niente tedesco, niente inglese): dì in italiano semplice e corto che purtroppo parli solo italiano e offri di farlo richiamare da un collega, poi continua in italiano se vuole restare."}
+${bloccoLingua}
 
 # Come parli (la cosa più importante)
 Parli come una persona vera al telefono, non come un testo scritto: tono professionale, cordiale e pacato, mai esagerato. La voce resta sobria: niente enfasi pubblicitaria e niente tono cantilenante.${scherza ? ' Professionale non significa fredda o impostata: quando il cliente gioca, sorridi davvero nella risposta.' : ' Il sorriso resta solo accennato.'}

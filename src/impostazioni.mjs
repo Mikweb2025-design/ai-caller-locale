@@ -69,8 +69,17 @@ export const PREDEFINITE = {
     principale: { servizio: 'claude', url: '', chiave: '', modello: process.env.CLAUDE_MODELLO || 'haiku', impegno: process.env.CLAUDE_IMPEGNO || 'low' },
     riserva: { servizio: '', url: '', chiave: '', modello: '', impegno: '' },
   },
-  // lingue: l'italiano c'è sempre; con il tedesco il receptionist risponde nella lingua di chi chiama
-  lingue: { tedesco: false, salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?' },
+  // lingue: l'italiano c'è sempre; con "tedesco" risponde in italiano o tedesco, con "multilingua"
+  // risponde anche in inglese, spagnolo e francese (tedesco compreso), nella lingua di chi chiama
+  lingue: {
+    tedesco: false,
+    salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?',
+    multilingua: false,
+    predefinita: 'it',
+    salutoInglese: 'Good morning, this is {nome}. How can I help you?',
+    salutoSpagnolo: 'Buenos días, soy {nome}. ¿En qué puedo ayudarle?',
+    salutoFrancese: 'Bonjour, ici {nome}. Comment puis-je vous aider ?',
+  },
   // calendari CalDAV collegati: { id, servizio, nome, url, utente, password, calendario, calendarioNome, leggi, scrivi }
   // l'aspetto delle pagine (pannello e chiamata dal browser): si modifica nel pannello, oppure si
   // riempiono da sole con "Importa dal sito" (logo e colore principale della home del sito)
@@ -116,6 +125,23 @@ export const PREDEFINITE = {
 };
 
 const CHIAVI_PERICOLOSE = new Set(['__proto__', 'prototype', 'constructor']);
+
+// Le lingue in cui il receptionist sa rispondere, oltre all'italiano che c'è sempre.
+export const LINGUE_MULTILINGUA = ['de', 'en', 'es', 'fr'];
+export const NOMI_LINGUA = { it: 'italiano', de: 'tedesco', en: 'inglese', es: 'spagnolo', fr: 'francese' };
+export function lingueAttive(lingue = impostazioni().lingue) {
+  const attive = new Set(['it']);
+  if (lingue?.tedesco) attive.add('de');
+  if (lingue?.multilingua) for (const l of LINGUE_MULTILINGUA) attive.add(l);
+  return attive;
+}
+
+// La lingua con cui parte la telefonata (saluto e prime frasi). Se non è tra quelle attive,
+// resta l'italiano: meglio un default sicuro che una lingua che il receptionist non parla.
+export function linguaPredefinita(lingue = impostazioni().lingue) {
+  const scelta = String(lingue?.predefinita || 'it');
+  return lingueAttive(lingue).has(scelta) ? scelta : 'it';
+}
 
 function clonaSicuro(valore) {
   if (Array.isArray(valore)) return valore.map(clonaSicuro);
