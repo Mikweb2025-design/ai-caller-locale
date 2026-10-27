@@ -6,20 +6,35 @@ import { descriviGestioneRichieste } from './intenti.mjs';
 
 export const oggiInItaliano = (d = new Date()) => giornoParlato(inRoma(d).iso);
 
+// Il saluto è testo da dire: {nome} è il receptionist, {attivita} il nome dell'attività
+// (anche quella appena importata dal sito), così non si riscrive niente a mano quando cambia.
+function compilaSaluto(testo) {
+  const { attivita, receptionist } = impostazioni();
+  const nome = String(receptionist.nome || '');
+  return String(testo || '')
+    .replaceAll('{nome}', nome.replace(/^./, (c) => c.toUpperCase())) // un nome proprio, non "maria"
+    .replaceAll('{attivita}', attivita.nome || '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export function saluto() {
   const { attivita, receptionist } = impostazioni();
-  return receptionist.saluto?.trim() || `${attivita.nome}, buongiorno! Sono ${receptionist.nome}, mi dica.`;
+  return compilaSaluto(receptionist.saluto) || `${attivita.nome}, buongiorno! Sono ${receptionist.nome}, mi dica.`;
 }
 
 // Il saluto come segmenti { testo, lingua }: uno solo, nella lingua predefinita scelta dall'admin.
 // Le altre lingue arrivano alla prima frase del cliente, quando si sa quale parla.
 const SALUTI = {
   it: null, // il saluto italiano è quello personalizzato in receptionist.saluto
-  de: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?',
-  en: 'Good morning, this is {nome}. How can I help you?',
-  es: 'Buenos días, soy {nome}. ¿En qué puedo ayudarle?',
-  fr: 'Bonjour, ici {nome}. Comment puis-je vous aider ?',
+  de: 'Guten Tag, hier ist {nome} von {attivita}. Was kann ich für Sie tun?',
+  en: 'Good morning, this is {nome} at {attivita}. How can I help you?',
+  es: 'Buenos días, soy {nome}, de {attivita}. ¿En qué puedo ayudarle?',
+  fr: 'Bonjour, ici {nome} de {attivita}. Comment puis-je vous aider ?',
 };
+
+// I saluti pronti per il pannello: si riempiono con un clic e restano agganciati ad attività e nome.
+export const SALUTI_PRONTI = { it: '{attivita}, buongiorno! Sono {nome}, mi dica.', de: SALUTI.de, en: SALUTI.en, es: SALUTI.es, fr: SALUTI.fr };
 
 export function salutoSegmenti() {
   const { receptionist, lingue } = impostazioni();
@@ -27,7 +42,7 @@ export function salutoSegmenti() {
   if (lingua === 'it') return [{ testo: saluto(), lingua: 'it' }];
   const campo = { de: 'salutoTedesco', en: 'salutoInglese', es: 'salutoSpagnolo', fr: 'salutoFrancese' }[lingua];
   const testo = String(lingue?.[campo] || '').trim() || SALUTI[lingua];
-  return [{ testo: testo.replace('{nome}', receptionist.nome), lingua }];
+  return [{ testo: compilaSaluto(testo), lingua }];
 }
 export const salutoCompleto = () => salutoSegmenti().map((x) => x.testo).join(' ');
 

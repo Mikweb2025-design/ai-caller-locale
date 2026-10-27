@@ -70,14 +70,15 @@ export const PREDEFINITE = {
     riserva: { servizio: '', url: '', chiave: '', modello: '', impegno: '' },
   },
   // lingue: l'italiano c'è sempre; in "attive" stanno le altre lingue che il receptionist capisce
-  // (le spunta una per una dal pannello) e "predefinita" è quella con cui parte la telefonata
+  // (le spunta una per una dal pannello) e "predefinita" è quella con cui parte la telefonata.
+  // Nei saluti {nome} è il receptionist e {attivita} il nome dell'attività (anche quella importata dal sito)
   lingue: {
     attive: ['it'],
     predefinita: 'it',
-    salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?',
-    salutoInglese: 'Good morning, this is {nome}. How can I help you?',
-    salutoSpagnolo: 'Buenos días, soy {nome}. ¿En qué puedo ayudarle?',
-    salutoFrancese: 'Bonjour, ici {nome}. Comment puis-je vous aider ?',
+    salutoTedesco: 'Guten Tag, hier ist {nome} von {attivita}. Was kann ich für Sie tun?',
+    salutoInglese: 'Good morning, this is {nome} at {attivita}. How can I help you?',
+    salutoSpagnolo: 'Buenos días, soy {nome}, de {attivita}. ¿En qué puedo ayudarle?',
+    salutoFrancese: 'Bonjour, ici {nome} de {attivita}. Comment puis-je vous aider ?',
   },
   // calendari CalDAV collegati: { id, servizio, nome, url, utente, password, calendario, calendarioNome, leggi, scrivi }
   // l'aspetto delle pagine (pannello e chiamata dal browser): si modifica nel pannello, oppure si
@@ -174,6 +175,7 @@ export function unisciSicuro(base, sopra) {
 // Le vecchie impostazioni avevano due spunte ("solo tedesco", "multilingua"): qui diventano
 // l'elenco delle lingue attive, una volta sola, prima di unire i valori salvati ai predefiniti.
 // Così chi aveva il multilingua acceso se lo ritrova senza doverlo rispuntare.
+let migrato = false;
 function migraLingue(salvate) {
   const lingue = salvate?.lingue;
   if (!lingue || typeof lingue !== 'object' || Array.isArray(lingue)) return;
@@ -182,8 +184,34 @@ function migraLingue(salvate) {
     if (lingue.multilingua) attive.push(...LINGUE_MULTILINGUA); else if (lingue.tedesco) attive.push('de');
     lingue.attive = [...new Set(attive)];
   }
+  if (lingue.tedesco !== undefined || lingue.multilingua !== undefined) migrato = true;
   delete lingue.tedesco;
   delete lingue.multilingua;
+}
+
+// I saluti stranieri di prima non dicevano il nome dell'attività: chi non li ha mai toccati
+// se li ritrova aggiornati (e con {attivita} si adattano da soli a un'attività importata).
+const VECCHI_SALUTI = {
+  salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?',
+  salutoInglese: 'Good morning, this is {nome}. How can I help you?',
+  salutoSpagnolo: 'Buenos días, soy {nome}. ¿En qué puedo ayudarle?',
+  salutoFrancese: 'Bonjour, ici {nome}. Comment puis-je vous aider ?',
+};
+
+function migraSaluti(salvate) {
+  const lingue = salvate?.lingue;
+  if (lingue && typeof lingue === 'object' && !Array.isArray(lingue)) {
+    for (const [campo, vecchio] of Object.entries(VECCHI_SALUTI)) {
+      if (String(lingue[campo] || '').trim() === vecchio) { lingue[campo] = PREDEFINITE.lingue[campo]; migrato = true; }
+    }
+  }
+  // "Lasercamp, buongiorno…" → "{attivita}, buongiorno…": se importi un'altra azienda il saluto
+  // la segue da solo, invece di restare quello dell'azienda di prima.
+  const nome = String(salvate?.attivita?.nome || '').trim();
+  const r = salvate?.receptionist;
+  if (!nome || !r || typeof r !== 'object' || typeof r.saluto !== 'string' || r.saluto.includes('{attivita}')) return;
+  const inizio = new RegExp(`^${nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[,:]\\s*`);
+  if (inizio.test(r.saluto)) { r.saluto = r.saluto.replace(inizio, '{attivita}, '); migrato = true; }
 }
 
 let cache = null;
@@ -193,8 +221,15 @@ export function impostazioni() {
     if (existsSync(FILE)) { try { salvate = JSON.parse(readFileSync(FILE, 'utf8')); } catch (e) { console.error('impostazioni.json illeggibile:', e.message); } }
     if (salvate.receptionist && typeof salvate.receptionist === 'object') delete salvate.receptionist.personaggio; // campo tolto: nelle impostazioni vecchie si ignora
     migraLingue(salvate);
+    migraSaluti(salvate);
     cache = unisciSicuro(PREDEFINITE, salvate);
     cache.gestioneRichieste = normalizzaGestioneRichieste(cache.gestioneRichieste);
+    // le vecchie impostazioni appena convertite si scrivono subito: il pannello e la chiamata
+    // vedono gli stessi valori, senza aspettare un salvataggio a mano
+    if (migrato) {
+      try { writeFileSync(FILE, JSON.stringify(cache, null, 2), { mode: 0o600 }); proteggi(FILE); }
+      catch (e) { console.error('impostazioni migrate non salvate:', e.message); }
+    }
   }
   return cache;
 }

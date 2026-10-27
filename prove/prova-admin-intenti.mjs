@@ -55,5 +55,13 @@ assert.match(sorgente, /function\s+raccogliLingue\s*\(/, 'manca la raccolta dell
 assert.match(sorgente, /o\.lingue\s*=\s*\{\s*\.\.\.\(o\.lingue \|\| \{\}\), attive:/, 'raccogli() non salva le lingue attive');
 assert.match(sorgente, /raccogliLingue\(o\)/, 'raccogli() non chiama raccogliLingue');
 assert.match(sorgente, /if \(scelta !== 'it' && !attive\.includes\(scelta\)\) attive\.push\(scelta\)/, 'la lingua del saluto deve finire tra le attive');
+assert(pagina.includes('id="salutiPronti"'), 'manca il pulsante che riempie i saluti pronti');
+assert.match(sorgente, /SALUTI_PRONTI/, 'i saluti pronti devono arrivare al pannello');
+assert.match(sorgente, /data-k="receptionist\.saluto"/, 'il saluto italiano deve stare accanto agli altri');
+// Spuntare una lingua porta lì anche il saluto: è quello che ci si aspetta dal pannello.
+assert.match(sorgente, /#lingueAttive input'\)\) el\.addEventListener\('change'/, 'spuntare una lingua deve allineare la lingua del saluto');
+// Lo script del pannello deve essere JavaScript valido: un errore qui lascerebbe la pagina muta.
+const script = pagina.slice(pagina.lastIndexOf('<script>') + 8, pagina.lastIndexOf('</script>'));
+assert.doesNotThrow(() => new Function(script), 'lo script del pannello non è JavaScript valido');
 
 console.log('OK admin Gestione richieste: rendering, raccolta ed escape XSS');

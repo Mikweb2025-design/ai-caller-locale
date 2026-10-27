@@ -1,6 +1,7 @@
 // Pannello admin: attività, orari, agenda, calendari, email e SMS, più l'elenco degli appuntamenti.
 // Una pagina sola che parla con le API /api/<segreto>/... del server.
 import { temaCss } from './design.mjs';
+import { SALUTI_PRONTI } from './persona.mjs';
 
 export const escHtml = (valore) => String(valore ?? '').replace(/[<>&"]/g, (carattere) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[carattere]));
 
@@ -189,13 +190,19 @@ export function paginaAdmin({ api, web, feed, avatar }) {
         <label class="lingua"><input type="radio" name="linguaSaluto" value="fr"> Francese</label>
       </div>
     </div>
-    <div class="griglia" style="margin-top:12px">
-      <div><label>Saluto in inglese <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoInglese"></div>
-      <div><label>Saluto in tedesco <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoTedesco"></div>
-      <div><label>Saluto in spagnolo <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoSpagnolo"></div>
-      <div><label>Saluto in francese <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoFrancese"></div>
+    <div style="margin-top:12px">
+      <div class="riga" style="justify-content:space-between; align-items:end;">
+        <label style="margin:0">Saluti nelle altre lingue <small>({nome} = receptionist, {attivita} = nome dell'attività, anche quella importata dal sito)</small></label>
+        <button type="button" class="secondario" id="salutiPronti">Riempi i saluti pronti</button>
+      </div>
     </div>
-    <div style="margin-top:12px"><label>Saluto <small>(vuoto = "&lt;attività&gt;, buongiorno! Sono &lt;nome&gt;, mi dica.")</small></label><input data-k="receptionist.saluto"></div>
+    <div class="griglia" style="margin-top:8px">
+      <div><label>Saluto in inglese</label><input data-k="lingue.salutoInglese" placeholder="vuoto = saluto pronto in inglese"></div>
+      <div><label>Saluto in tedesco</label><input data-k="lingue.salutoTedesco" placeholder="vuoto = saluto pronto in tedesco"></div>
+      <div><label>Saluto in spagnolo</label><input data-k="lingue.salutoSpagnolo" placeholder="vuoto = saluto pronto in spagnolo"></div>
+      <div><label>Saluto in francese</label><input data-k="lingue.salutoFrancese" placeholder="vuoto = saluto pronto in francese"></div>
+    </div>
+    <div style="margin-top:12px"><label>Saluto in italiano <small>(vuoto = "{attivita}, buongiorno! Sono {nome}, mi dica.")</small></label><input data-k="receptionist.saluto" placeholder="vuoto = saluto pronto in italiano"></div>
     <div style="margin-top:12px"><label>Istruzioni in più <small>(in italiano, es. "Il venerdì pomeriggio niente revisioni")</small></label><textarea data-k="receptionist.note"></textarea></div>
   </section>
 
@@ -363,6 +370,7 @@ const API = ${JSON.stringify(api)};
 const AVATAR = ${JSON.stringify(avatar)};
 const $ = (s) => document.querySelector(s);
 const GIORNI = { lunedi: 'Lunedì', martedi: 'Martedì', mercoledi: 'Mercoledì', giovedi: 'Giovedì', venerdi: 'Venerdì', sabato: 'Sabato', domenica: 'Domenica' };
+const SALUTI_PRONTI = ${JSON.stringify(SALUTI_PRONTI)};
 let dati = null;
 const htmlRegolaRichiesta = ${htmlRegolaRichiesta.toString()};
 
@@ -693,6 +701,25 @@ function raccogliLingue(o) {
   o.lingue = { ...(o.lingue || {}), attive: [...new Set(attive)], predefinita: scelta };
   return o;
 }
+// Spuntare una lingua porta lì anche il saluto: chi mette il tedesco si aspetta di sentirlo
+// partire in tedesco, non in italiano. Il radio resta visibile e si può rimettere su italiano.
+for (const el of document.querySelectorAll('#lingueAttive input')) el.addEventListener('change', () => {
+  const radio = document.querySelector('#linguaSaluto input[value="' + el.value + '"]');
+  if (!radio) return;
+  if (el.checked) radio.checked = true;
+  else if (radio.checked) document.querySelector('#linguaSaluto input[value="it"]').checked = true;
+});
+// I saluti pronti usano {attivita} e {nome}: si adattano da soli al nome importato dal sito.
+$('#salutiPronti').addEventListener('click', () => {
+  const mappa = { 'lingue.salutoInglese': SALUTI_PRONTI.en, 'lingue.salutoTedesco': SALUTI_PRONTI.de, 'lingue.salutoSpagnolo': SALUTI_PRONTI.es, 'lingue.salutoFrancese': SALUTI_PRONTI.fr };
+  for (const [k, v] of Object.entries(mappa)) {
+    const el = document.querySelector('[data-k="' + k + '"]');
+    if (el) el.value = v;
+  }
+  const italiano = document.querySelector('[data-k="receptionist.saluto"]');
+  if (italiano && !italiano.value.trim()) italiano.value = SALUTI_PRONTI.it;
+  avviso('Saluti riempiti: dicono il nome dell\\'attività e quello del receptionist da soli. Salva per usarli.');
+});
 function raccogli() {
   const o = {};
   for (const el of document.querySelectorAll('[data-k]')) metti(o, el.dataset.k, el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value);

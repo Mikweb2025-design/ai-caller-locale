@@ -46,6 +46,20 @@ try {
   assert.deepEqual(salutoSegmenti().map((s) => s.lingua), ['de']);
   assert.match(salutoSegmenti()[0].testo, /Guten Tag/);
 
+  // Il saluto pronto dice anche il nome dell'attività: {attivita} si compila da solo,
+  // così un'attività importata dal sito non lascia il saluto di quella di prima.
+  const nomeAttivita = impostazioni().attivita.nome;
+  assert.match(salutoSegmenti()[0].testo, new RegExp(nomeAttivita.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(salutoSegmenti()[0].testo, /\{attivita\}|\{nome\}/);
+  assert.match(salutoSegmenti()[0].testo, new RegExp(impostazioni().receptionist.nome, 'i'));
+  // Un saluto scritto a mano con i segnaposto si compila allo stesso modo.
+  salvaImpostazioni({ lingue: { salutoTedesco: 'Guten Tag, hier ist {nome} von {attivita}.' } });
+  const nomeReceptionist = impostazioni().receptionist.nome.replace(/^./, (c) => c.toUpperCase());
+  assert.equal(salutoSegmenti()[0].testo, `Guten Tag, hier ist ${nomeReceptionist} von ${nomeAttivita}.`);
+  // Saluto italiano vuoto: si compone con attività e nome, senza scriverlo a mano.
+  salvaImpostazioni({ receptionist: { saluto: '' }, lingue: { predefinita: 'it' } });
+  assert.equal(salutoSegmenti()[0].testo, `${nomeAttivita}, buongiorno! Sono ${impostazioni().receptionist.nome}, mi dica.`);
+
   // Multilingua: italiano, tedesco, inglese, spagnolo e francese.
   salvaImpostazioni({ lingue: { attive: ['it', 'en', 'de', 'es', 'fr'], predefinita: 'it' } });
   assert.deepEqual([...lingueAttive()].sort(), ['de', 'en', 'es', 'fr', 'it']);

@@ -54,10 +54,25 @@ try {
   assert.deepEqual([...lingueAttive()].sort(), ['en', 'it']);
   assert.equal(impostazioni().lingue.predefinita, 'en');
 
+  // I saluti pronti delle versioni precedenti non dicevano il nome dell'attività: si aggiornano
+  // da soli, mentre un saluto scritto a mano resta com'è.
+  writeFileSync(file, JSON.stringify({ lingue: { salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?', salutoInglese: 'Good morning, this is {nome}. How can I help you?', salutoFrancese: 'Ciao, sono {nome}.' } }));
+  const migrato = await import('../src/impostazioni.mjs?saluti=1');
+  assert.match(migrato.impostazioni().lingue.salutoTedesco, /\{attivita\}/, 'il vecchio saluto pronto si aggiorna');
+  assert.match(migrato.impostazioni().lingue.salutoInglese, /\{attivita\}/, 'il vecchio saluto pronto si aggiorna');
+  assert.equal(migrato.impostazioni().lingue.salutoFrancese, 'Ciao, sono {nome}.', 'il saluto scritto a mano non si tocca');
+
   // Elenco vuoto o rotto: si torna all'italiano, senza salti di lingua a metà telefonata.
   salvaImpostazioni({ lingue: { attive: 'de', predefinita: 'de' } });
   assert.deepEqual([...lingueAttive()], ['it']);
   assert.equal(impostazioni().lingue.predefinita, 'it');
+
+  // Il saluto che comincia col nome dell'attività diventa parametrico: se importi un'altra
+  // azienda il saluto la segue, e il file su disco è già aggiornato (nessun salvataggio a mano).
+  writeFileSync(file, JSON.stringify({ attivita: { nome: 'Officina Verdi' }, receptionist: { saluto: 'Officina Verdi, buongiorno. Sono Maria.' }, lingue: { attive: ['it'], predefinita: 'it' } }));
+  const conSaluto = await import('../src/impostazioni.mjs?saluto=1');
+  assert.equal(conSaluto.impostazioni().receptionist.saluto, '{attivita}, buongiorno. Sono Maria.');
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).receptionist.saluto, '{attivita}, buongiorno. Sono Maria.', 'la migrazione si scrive da sola nel file');
 
   console.log('Migrazione lingue verificata: vecchie spunte, elenco nuovo e lingua del saluto.');
 } finally {
