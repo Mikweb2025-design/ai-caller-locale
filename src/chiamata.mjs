@@ -137,22 +137,39 @@ const SPAGNOLO_PAROLE = /[ñ¿¡]|\b(?:el|los|las|una|unos|unas|del|al|es|son|es
 const FRANCESE_PAROLE = /[çœ]|\b(?:le|les|des|une|du|au|aux|est|sont|je|tu|il|elle|nous|vous|ils|elles|mon|ma|mes|votre|vos|notre|nos|pour|par|avec|sans|très|aussi|mais|quand|où|comment|quoi|qui|bonjour|bonsoir|salut|merci|plaît|parler|parlez|appelle|nom|numéro|rendez-vous|demain|aujourd'hui|heure|heures|prix|courriel|envoyer|fichier|matériau|quantité|couper|graver|voudrais|aimerais|revoyure|bonne|deux|trois|quatre|cinq|sept|huit|neuf|dix|onze|douze|demie)\b/gi;
 const MARCATORI = { it: SOLO_ITALIANO, de: TEDESCO, en: INGLESE_PAROLE, es: SPAGNOLO_PAROLE, fr: FRANCESE_PAROLE };
 
-export function rilevaLingua(testo, precedente = 'it', attive = null) {
-  const lingue = attive instanceof Set ? attive : lingueAttive();
-  const frase = String(testo || '');
+function punteggiLingua(frase, lingue) {
+  const testo = String(frase || '');
   const punteggi = {};
   let migliore = 'it', massimo = 0;
   for (const lingua of lingue) {
     const espressione = MARCATORI[lingua];
     if (!espressione) continue;
-    const n = (frase.match(espressione) || []).length;
+    const n = (testo.match(espressione) || []).length;
     punteggi[lingua] = n;
     if (n > massimo) { massimo = n; migliore = lingua; }
   }
+  return { punteggi, migliore, massimo };
+}
+
+export function rilevaLingua(testo, precedente = 'it', attive = null) {
+  const lingue = attive instanceof Set ? attive : lingueAttive();
+  const { punteggi, migliore, massimo } = punteggiLingua(testo, lingue);
   if (massimo === 0) return lingue.has(precedente) ? precedente : 'it'; // frase cortissima: resta nella lingua di prima
   // a parità vince la lingua di prima: la frase non fa saltare la telefonata da una lingua all'altra
   if (punteggi[precedente] === massimo) return precedente;
   return migliore;
+}
+
+// La lingua che il cliente sta davvero parlando: serve un segnale netto (almeno due parole
+// chiave), così un nome, un numero o un "ok" non fanno cambiare lingua alla telefonata.
+// Restituisce null quando non c'è niente di chiaro e conviene tenere la lingua di prima.
+export function linguaDetta(frase, precedente = 'it', attive = null) {
+  const lingue = attive instanceof Set ? attive : lingueAttive();
+  const { punteggi, migliore, massimo } = punteggiLingua(frase, lingue);
+  if (massimo < 2) return null;
+  if (punteggi[precedente] === massimo) return null;
+  // se due lingue sono a pari merito non si sceglie: meglio restare dove siamo
+  return Object.values(punteggi).filter((n) => n === massimo).length === 1 ? migliore : null;
 }
 export function nonItaliano(frase) {
   if (ITALIANO.test(frase) || /[äöüß]|\b(ich|wir|sie|nicht|und|bitte|danke|guten|termin|gerne|ja|nein|haben)\b/i.test(frase)) return false;
@@ -391,6 +408,13 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       return;
     }
     logFrase('👤', detto, { ascoltoMs: t.ms, voceOccupata: Boolean(t.voce_occupata) });
+    // la lingua di default della telefonata segue quella che dice il cliente: da qui in poi
+    // anche le frasi di servizio (riepilogo, richiamo, email) partono nella sua lingua
+    const lingua = linguaDetta(detto, linguaVoce);
+    if (lingua && lingua !== linguaVoce) {
+      linguaVoce = lingua;
+      chiamata.log('lingua del cliente', lingua);
+    }
     testo('cliente', detto);
     ultimoCliente = detto;
     annotaNumeroDettato(detto);

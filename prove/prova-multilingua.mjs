@@ -13,7 +13,7 @@ process.env.DATI_DIR = cartella;
 try {
   const { impostazioni, salvaImpostazioni, lingueAttive } = await import('../src/impostazioni.mjs');
   const { istruzioni, salutoSegmenti } = await import('../src/persona.mjs');
-  const { rilevaLingua, nonItaliano } = await import('../src/chiamata.mjs');
+  const { rilevaLingua, linguaDetta, nonItaliano } = await import('../src/chiamata.mjs');
   const { consensoPrenotazione, consensoRichiamo, congedoCliente } = await import('../src/consenso.mjs');
 
   // Spento: solo italiano.
@@ -69,6 +69,21 @@ try {
     ['Sì, va bene, grazie', 'it'],
   ];
   for (const [frase, attesa] of casi) assert.equal(rilevaLingua(frase, 'it', attive), attesa, frase);
+
+  // La lingua di default della telefonata segue quella detta dal cliente, ma solo con un
+  // segnale netto: "ok", un nome o un numero non fanno cambiare lingua.
+  assert.equal(linguaDetta('Hola, quiero una cita para mañana', 'it', attive), 'es');
+  assert.equal(linguaDetta('Good morning, I would like to book an appointment', 'it', attive), 'en');
+  assert.equal(linguaDetta('Bonjour, je voudrais un rendez-vous', 'it', attive), 'fr');
+  assert.equal(linguaDetta('Guten Tag, ich möchte einen Termin', 'it', attive), 'de');
+  assert.equal(linguaDetta('Sì, va bene, grazie', 'en', attive), 'it');
+  assert.equal(linguaDetta('ok', 'en', attive), null);
+  assert.equal(linguaDetta('Marco Rossi', 'en', attive), null);
+
+  // Con il multilingua spento non si cambia lingua: resta quella scelta dall'admin.
+  salvaImpostazioni({ lingue: { multilingua: false, tedesco: false } });
+  assert.equal(linguaDetta('Good morning, I would like to book an appointment', 'it'), null);
+  salvaImpostazioni({ lingue: { multilingua: true } });
 
   // Le frasi dei clienti in inglese non sono più scartate come rumore, con il multilingua attivo.
   assert.equal(nonItaliano('yes, that is right'), false);
