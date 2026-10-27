@@ -25,12 +25,13 @@ export function htmlRegolaRichiesta(regola = {}, esc = escHtml) {
     + '<option value="offri_richiamata"' + selezionata('offri_richiamata', regola.comportamento) + '>Offri una richiamata</option>'
     + '<option value="non_proporre"' + selezionata('non_proporre', regola.comportamento) + '>Non fare proposte</option></select></div>'
     + '<div style="grid-column:1/-1"><label>Indicatori del cliente <small>(uno per riga, frasi o concetti; niente codice)</small></label><textarea class="r-indicatori" placeholder="quanto costa\nvi mando il disegno\nserve un preventivo">' + esc(indicatori) + '</textarea></div>'
-    + '<div><label>Obiettivo</label><textarea class="r-obiettivo" placeholder="Cosa deve ottenere Maria in questo caso">' + esc(regola.obiettivo) + '</textarea></div>'
+    + '<div><label>Obiettivo</label><textarea class="r-obiettivo" placeholder="Cosa deve ottenere in questo caso">' + esc(regola.obiettivo) + '</textarea></div>'
     + '<div><label>Cosa non proporre</label><textarea class="r-non-proporre" placeholder="es. non proporre un appuntamento">' + esc(regola.nonProporre) + '</textarea></div>'
     + '</div><div class="riga" style="margin-top:10px"><label class="check"><input type="checkbox" class="r-attiva"' + (regola.attiva === false ? '' : ' checked') + '> Regola attiva</label><button class="pericolo r-togli" type="button" style="margin-left:auto">Rimuovi</button></div>';
 }
 
-export function paginaAdmin({ api, web, feed, avatar }) {
+export function paginaAdmin({ api, web, feed, avatar, nome = '' }) {
+  const chi = escHtml(String(nome || 'il receptionist').replace(/^./, (c) => c.toUpperCase()));
   return `<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Impostazioni receptionist</title>
@@ -159,7 +160,7 @@ export function paginaAdmin({ api, web, feed, avatar }) {
       <div class="azioni">
         <label for="avatarFile">Foto nella landing page <small>(JPG, PNG o WebP, massimo 3 MB)</small></label>
         <input type="file" id="avatarFile" accept="image/jpeg,image/png,image/webp">
-        <div class="riga" style="margin-top:9px;flex-wrap:wrap"><button type="button" id="avatarCarica">Usa questa foto</button><button type="button" class="secondario" id="avatarRipristina">Ripristina Maria</button></div>
+        <div class="riga" style="margin-top:9px;flex-wrap:wrap"><button type="button" id="avatarCarica">Usa questa foto</button><button type="button" class="secondario" id="avatarRipristina">Ripristina ${chi}</button></div>
         <span class="esito" id="avatarEsito"></span>
       </div>
     </div>
@@ -208,7 +209,7 @@ export function paginaAdmin({ api, web, feed, avatar }) {
 
   <section data-scheda="Suoni">
     <h2>Suoni d'ufficio</h2>
-    <p class="aiuto">L'ufficio intorno a Maria: tasti, fogli, mouse, la sedia, la tazzina, le chiavi, una porta lontana. Si sentono mentre prepara la risposta, sotto la sua voce e — se vuoi — subito dopo che ha finito di parlare. Li sente solo il chiamante e non entrano nel riconoscimento vocale. Il cambio vale subito, anche a chiamata già in corso.</p>
+    <p class="aiuto">L'ufficio intorno a ${chi}: tasti, fogli, mouse, la sedia, la tazzina, le chiavi, una porta lontana. Si sentono mentre prepara la risposta, sotto la sua voce e — se vuoi — subito dopo che ha finito di parlare. Li sente solo il chiamante e non entrano nel riconoscimento vocale. Il cambio vale subito, anche a chiamata già in corso.</p>
     <label class="check"><input type="checkbox" data-k="suoni.attiva"> Suoni d'ufficio in sottofondo</label>
     <div class="griglia" style="margin-top:12px">
       <div><label>Volume <small>(da 0 a 0.04: resta sotto la soglia che interrompe la voce)</small></label><input type="number" step="0.005" min="0" max="0.04" data-k="suoni.volume"></div>
@@ -218,12 +219,12 @@ export function paginaAdmin({ api, web, feed, avatar }) {
         <option value="ambiente">ambiente: soffio della stanza e rumori radi</option>
       </select></div>
     </div>
-    <label class="check" style="margin-top:12px"><input type="checkbox" data-k="suoni.dopo"> <strong>Suoni dopo la voce</strong> <small>un piccolo rumore di stanza quando Maria ha finito di parlare, prima che risponda il cliente</small></label>
+    <label class="check" style="margin-top:12px"><input type="checkbox" data-k="suoni.dopo"> <strong>Suoni dopo la voce</strong> <small>un piccolo rumore di stanza quando ${chi} ha finito di parlare, prima che risponda il cliente</small></label>
   </section>
 
   <section data-scheda="Gestione richieste">
     <h2>Gestione richieste</h2>
-    <p class="aiuto">Maria riconosce semanticamente ciò che vuole il cliente: non cerca una parola esatta. Queste regole la guidano nei casi importanti, lasciandole decidere come rispondere in base all'intera conversazione.</p>
+    <p class="aiuto">${chi} riconosce semanticamente ciò che vuole il cliente: non cerca una parola esatta. Queste regole la guidano nei casi importanti, lasciandole decidere come rispondere in base all'intera conversazione.</p>
     <div class="griglia">
       <label class="check"><input type="checkbox" id="richiesteAutomatiche"> <span><strong>Riconoscimento automatico</strong><br><small>Attivo: l'AI capisce anche frasi non previste. Disattivo: usa soltanto gli indicatori scritti nelle regole.</small></span></label>
       <div><label>Azione predefinita <small>(se nessuna regola è adatta)</small></label><select id="richiesteFallback">
@@ -254,7 +255,7 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     <p class="aiuto" style="margin-top:8px">Se il microfono non parte, puoi anche <strong>usare una registrazione che hai già sul disco</strong> (wav, mp3, m4a): stesso risultato.</p>
     <input type="file" id="vocFile" accept="audio/*" style="max-width:340px;background:var(--sfondo)">
     <audio id="vocAscolta" controls style="display:none;margin-top:10px;max-width:340px;width:100%"></audio>
-    <div style="margin-top:12px;max-width:420px"><label>Nome della voce <small>(es. Maria)</small></label><input id="vocNome" placeholder="Maria"></div>
+    <div style="margin-top:12px;max-width:420px"><label>Nome della voce <small>(es. Marco)</small></label><input id="vocNome" placeholder="Marco"></div>
     <div style="margin-top:12px"><label>Il testo da leggere durante la registrazione <small>(parlalo scoprendo frase per frase, non cantandolo)</small></label><textarea id="vocTesto" style="min-height:110px"></textarea></div>
     <div class="riga" style="margin-top:10px;flex-wrap:wrap"><button type="button" id="vocSalva" disabled>Salva la voce nell'elenco</button><span class="esito" id="vocRegEsito"></span></div>
     <p class="aiuto" style="margin-top:8px">Dopo "Salva" la voce compare nell'elenco qui sopra: per usarla premi <strong>Attiva</strong>. La vecchia voce resta e puoi tornarci quando vuoi.</p>
@@ -495,7 +496,7 @@ async function chiedi(percorso, opz = {}) {
   return j;
 }
 
-// Foto del receptionist: anteprima locale, caricamento e ritorno all'avatar di Maria incluso.
+// Foto del receptionist: anteprima locale, caricamento e ritorno all'avatar incluso nell'app.
 $('#avatarFile').onchange = () => {
   const file = $('#avatarFile').files[0];
   if (!file) return;
@@ -525,7 +526,7 @@ $('#avatarRipristina').onclick = async () => {
     await chiedi('/receptionist/avatar', { method: 'POST', body: { rimuovi: true } });
     $('#avatarFile').value = '';
     $('#avatarAnteprima').src = AVATAR + '?v=' + Date.now();
-    $('#avatarEsito').textContent = '✅ avatar di Maria ripristinato';
+    $('#avatarEsito').textContent = '✅ avatar predefinito ripristinato';
   } catch (e) { $('#avatarEsito').textContent = '⚠️ ' + e.message; }
   $('#avatarRipristina').disabled = false;
 };
@@ -1024,7 +1025,7 @@ $('#vocSalva').onclick = async () => {
   if (!datiVoce) return;
   const nome = ($('#vocNome').value || '').trim();
   const testo = $('#vocTesto').value.trim();
-  if (!nome) return avviso('Scegli un nome per la voce (es. Maria)');
+  if (!nome) return avviso('Scegli un nome per la voce (es. Marco)');
   if (!testo) return avviso('Serve il testo che hai letto durante la registrazione');
   if (testo.length < 40) return avviso('Il testo è troppo corto: da leggere per 20-30 secondi servono almeno qualche frase in più');
   $('#vocSalva').disabled = true; $('#vocRegEsito').textContent = 'salvo la voce…';

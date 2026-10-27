@@ -39,7 +39,7 @@ const xml = (s) => String(s ?? '').replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>
 
 // Le voci del receptionist: i campioni .wav della cartella voci/ (quello attivo lo sceglie il pannello)
 const CARTELLA_VOCI = join(RADICE, 'voci');
-const AVATAR_PREDEFINITO = join(RADICE, 'assets', 'maria-avatar.png');
+const AVATAR_PREDEFINITO = join(RADICE, 'assets', 'marco-avatar.png');
 const avatarCaricato = () => {
   const nome = String(impostazioni().receptionist?.avatar || '');
   return /^avatar-receptionist\.(?:jpg|png|webp)$/.test(nome) && existsSync(join(CARTELLA_DATI, nome)) ? join(CARTELLA_DATI, nome) : '';
@@ -120,9 +120,9 @@ const server = http.createServer(async (req, res) => {
     // Pannello admin: impostazioni, calendari, email, appuntamenti
     if (req.method === 'GET' && (url.pathname === `/admin/${segreto}` || (url.pathname === '/admin' && segreto === 'locale'))) {
       const base = urlPubblico() || `http://${req.headers.host}`;
-      return html(paginaAdmin({ api: `/api/${segreto}`, web: segreto === 'locale' ? '/' : `/web/${segreto}`, feed: `${base}/calendario/${segreto}.ics`, avatar: `/avatar/${segreto}` }));
+      return html(paginaAdmin({ api: `/api/${segreto}`, web: segreto === 'locale' ? '/' : `/web/${segreto}`, feed: `${base}/calendario/${segreto}.ics`, avatar: `/avatar/${segreto}`, nome: impostazioni().receptionist?.nome || '' }));
     }
-    // Foto del receptionist: quella caricata dal pannello, oppure Maria inclusa nell'app.
+    // Foto del receptionist: quella caricata dal pannello, oppure l'avatar incluso nell'app.
     if (req.method === 'GET' && url.pathname === `/avatar/${segreto}`) {
       const f = avatarCaricato() || AVATAR_PREDEFINITO;
       if (!existsSync(f)) return json(404, { errore: 'avatar non trovato' });
@@ -212,7 +212,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (percorso === '/voce/campione' && req.method === 'POST') {
         const nome = String(corpo.nome || '').trim().toLowerCase().replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-        if (!nome) return json(400, { errore: 'scrivi il nome della voce (es. Maria)' });
+        if (!nome) return json(400, { errore: 'scrivi il nome della voce (es. Marco)' });
         if (nome === 'receptionist') return json(400, { errore: '"receptionist" è riservato alla voce di partenza: scegli un altro nome' });
         const pcm = Buffer.from(String(corpo.pcm || ''), 'base64');
         const secondi = pcm.length / 48000; // PCM 16 bit a 24 kHz monocanale
@@ -379,8 +379,8 @@ server.on('upgrade', (req, socket, head) => {
 
 setInterval(() => { for (const [g, scade] of gettoni) if (scade < Date.now()) gettoni.delete(g); }, 60000).unref();
 
-// il saluto e il riempitivo si preparano subito, così la chiamata parte senza attese
-const prepara = () => Promise.all([...salutoSegmenti().map((x) => frasePronta(x.testo, x.lingua)), ...(CONFIG.riempitivoSecondi >= 0 ? Object.entries(RIEMPITIVI).map(([lingua, testo]) => frasePronta(testo, lingua)) : [])])
+// il saluto e i riempitivi si preparano subito, così la chiamata parte senza attese
+const prepara = () => Promise.all([...salutoSegmenti().map((x) => frasePronta(x.testo, x.lingua)), ...(CONFIG.riempitivoSecondi >= 0 ? Object.entries(RIEMPITIVI).flatMap(([lingua, testi]) => [].concat(testi).map((testo) => frasePronta(testo, lingua))) : [])])
   .then(() => console.log('🔊 saluto pronto'))
   .catch(() => { console.log('⏳ motore vocale non ancora acceso (npm run motore), riprovo...'); setTimeout(prepara, 5000).unref(); });
 prepara();

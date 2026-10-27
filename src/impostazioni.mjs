@@ -38,7 +38,7 @@ export const PREDEFINITE = {
   receptionist: {
     nome: process.env.NOME_RECEPTIONIST || 'Luca',
     genere: process.env.GENERE_RECEPTIONIST || 'm',
-    avatar: '', // file immagine caricato dal pannello; vuoto = avatar di Maria incluso nell'app
+    avatar: '', // file immagine caricato dal pannello; vuoto = avatar incluso nell'app
     saluto: '', // vuoto = "<attività>, buongiorno! Sono <nome>, mi dica."
     note: '', // istruzioni in più, in italiano
     voce: { campione: '' }, // nome del file .wav in voci/ scelto dal pannello; vuoto = voci/receptionist.wav

@@ -6,6 +6,8 @@ Italian version: [README.it.md](README.it.md) · Technical guide (Italian): [GUI
 
 🎧 [Listen to a call](demo/telefonata-lasercamp.mp3) (Italian, the Lasercamp example below) · [A second simulated call](demo/telefonata-locale.mp3)
 
+> **Default voice: Marco.** The receptionist in this installation is called Marco and speaks with a cloned male voice (`voci/marco.wav`, 24 s sample with its transcript in `voci/marco.json`). Maria's voice is still in the list (`maria.wav`) and can be re-activated from the **Voice** tab of the admin panel. The default avatar is `assets/marco-avatar.png`.
+
 ## Contents
 
 1. [What it is and what it does](#what-it-is-and-what-it-does)
@@ -133,8 +135,8 @@ The main `.env` options:
 | `CLAUDE_MODELLO` | `haiku` | Claude model (`haiku` is the most responsive on the phone) |
 | `CLAUDE_IMPEGNO` | `low` | `--effort` level; `low` gives the fastest first text |
 | `STT_MODELLO` | `mlx-community/parakeet-tdt-0.6b-v3` | Or a faster-whisper model (`small`, `large-v3-turbo`, ...) |
-| `TTS_TEMPERATURA` | `0.6` in the code | Lower = flatter and steadier voice, higher = more expressive and less predictable |
-| `TTS_TOP_P` / `TTS_TOP_K` | `0.92` / `40` | Keep natural variation while excluding unlikely cadences |
+| `TTS_TEMPERATURA` | `0.72` in the code | Lower = flatter and steadier voice, higher = more expressive and less predictable |
+| `TTS_TOP_P` / `TTS_TOP_K` | `0.93` / `40` | Keep natural variation while excluding unlikely cadences |
 | `TTS_RIPETIZIONE` | `1.08` | Reduces repeated sounds, stutters and trailing speech |
 | `VAD_SOGLIA` | `700` | Energy above which it is voice (raise it with background noise) |
 | `VAD_SILENZIO_MS` | `750` | Silence after which the caller has finished |
@@ -286,7 +288,9 @@ The phone sheet goes into the model's instructions at every call (the first 8,00
 
 ## The voice
 
-- The default voice is `voci/receptionist.wav`: a Milanese man of about 35, natural and professional, with `voci/testo.txt` as its transcript. It was **designed with Qwen3-TTS VoiceDesign** (a text description of the voice, `motore/disegna-voce.py`) and is then **cloned at every sentence** by the Qwen3-TTS 0.6B Base model. The sample contains no fillers ("allora", "ehm") because the clone would tend to repeat them.
+- The engine's starting voice is `voci/receptionist.wav`: a Milanese man of about 35, natural and professional, with `voci/testo.txt` as its transcript. In this installation the active voice is the cloned male `voci/marco.wav`; Maria's voice (`voci/maria.wav`) stays in the list. The active voice is **cloned at every sentence** by the Qwen3-TTS 0.6B Base model. The sample contains no fillers ("allora", "ehm") because the clone would tend to repeat them.
+- **Choosing the voice.** Panel → **Voice** tab: listen to the samples in `voci/`, press **Activate** on the one you want and it is used from the next call; you can also record a new voice there. Next to each `voci/<name>.wav` sits `voci/<name>.json` with `testo` (the exact transcript of the sample) and `tono` (how much to lower the register: `0.84` for the engine's female voices, `1.0` for a cloned male voice, allowed range `0.6`–`1.15`).
+- The engine generates at 24 kHz and resamples to 8 kHz **continuously while streaming**, piece by piece, with no seams between pieces.
 - **Replacing it with another designed voice.** Change the description in `motore/disegna-voce.py` and run `python3 motore/disegna-voce.py 4` (four proposals). Listen to `voci/proposta-N.wav` and copy the best one (5 to 10 seconds) to `voci/receptionist.wav`. **Warning:** the script **rewrites `voci/testo.txt` on every run** with its own sample text (the script's `TESTO` variable, the same for all proposals), even if `receptionist.wav` did not change. After choosing a proposal, `voci/testo.txt` must contain exactly what is said in the sample you copied: if you trimmed the audio, trim the text too; if you changed `TESTO`, the file is already right for the new proposals but not for the old `receptionist.wav` until you replace it. If you re-run the script without replacing the active sample, fix the text back (or keep a copy first).
 - **Cloning a voice of your own.** Record 5 to 15 seconds of clean speech, with no fillers, and write exactly what is said. Either replace the two files above or set `TTS_RIF_AUDIO` (a 24 kHz wav) and `TTS_RIF_TESTO` in `.env`. **Only clone a voice with the explicit consent of the person speaking**, and do not present a cloned real person as someone else to your callers.
 - Without a sample the engine uses a built-in Qwen3-TTS CustomVoice speaker (`TTS_VOCE`), which has a slight foreign accent.
@@ -377,7 +381,7 @@ Appointment length 60 minutes, one at a time, minimum notice and horizon as in t
 
 ### 3. The voice
 
-The default voice (a Milanese man, name "Luca") fits a workshop near Milan, so we keep it. To change it, see [The voice](#the-voice). Greeting: `Lasercamp, buongiorno! Sono Luca, mi dica.`
+The voice in the example (a Milanese man, name "Luca") fits a workshop near Milan, so we keep it. To change it, see [The voice](#the-voice). Greeting: `Lasercamp, buongiorno! Sono Luca, mi dica.`
 
 ### 4. Calendar
 
@@ -476,7 +480,7 @@ motore/
   disegna-voce.py    creates voice samples with Qwen3-TTS VoiceDesign
   requirements.txt
 prove/               simulated calls, Twilio test with a fake Twilio, tone matrix, delay measurements
-voci/                the receptionist voice sample (receptionist.wav, testo.txt)
+voci/                the voice samples (receptionist.wav, testo.txt; <name>.wav with <name>.json)
 demo/                two example calls (mp3)
 docs/screenshot/     the screenshots used in this README
 dati/                settings and appointments (created at runtime, git-ignored)

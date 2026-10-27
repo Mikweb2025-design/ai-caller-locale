@@ -6,6 +6,8 @@ English version: [README.md](README.md) · Guida tecnica: [GUIDA-TECNICA.md](GUI
 
 🎧 [Ascolta una telefonata](demo/telefonata-lasercamp.mp3) (in italiano, l'esempio Lasercamp qui sotto) · [Una seconda telefonata simulata](demo/telefonata-locale.mp3)
 
+> **Voce predefinita: Marco.** Il receptionist di questa installazione si chiama Marco e usa una voce maschile clonata (`voci/marco.wav`, campione di 24 s in `voci/marco.json`). La voce di Maria resta nell'elenco delle voci (`maria.wav`) e si riattiva dal pannello, scheda **Voce**. L'avatar predefinito è `assets/marco-avatar.png`.
+
 ## Indice
 
 1. [Cosa è e cosa fa](#cosa-è-e-cosa-fa)
@@ -133,8 +135,8 @@ Le opzioni principali del `.env`:
 | `CLAUDE_MODELLO` | `haiku` | Modello di Claude (`haiku` è il più pronto al telefono) |
 | `CLAUDE_IMPEGNO` | `low` | Livello di `--effort`; `low` dà il primo testo più in fretta |
 | `STT_MODELLO` | `mlx-community/parakeet-tdt-0.6b-v3` | Oppure un modello faster-whisper (`small`, `large-v3-turbo`, ...) |
-| `TTS_TEMPERATURA` | `0.6` nel codice | Più bassa = voce più piatta e regolare, più alta = più espressiva e meno prevedibile |
-| `TTS_TOP_P` / `TTS_TOP_K` | `0.92` / `40` | Mantengono variazioni naturali escludendo le cadenze meno probabili |
+| `TTS_TEMPERATURA` | `0.72` nel codice | Più bassa = voce più piatta e regolare, più alta = più espressiva e meno prevedibile |
+| `TTS_TOP_P` / `TTS_TOP_K` | `0.93` / `40` | Mantengono variazioni naturali escludendo le cadenze meno probabili |
 | `TTS_RIPETIZIONE` | `1.08` | Riduce ripetizioni, balbettii e code vocali |
 | `VAD_SOGLIA` | `700` | Energia sopra cui è voce (alzala con rumore di fondo) |
 | `VAD_SILENZIO_MS` | `750` | Silenzio dopo cui chi chiama ha finito |
@@ -284,7 +286,9 @@ La scheda per il telefono finisce nelle istruzioni del modello a ogni chiamata (
 
 ## La voce
 
-- La voce predefinita è `voci/receptionist.wav`: un uomo milanese di circa 35 anni, naturale e professionale, con `voci/testo.txt` come trascrizione. È stata **progettata con Qwen3-TTS VoiceDesign** (una descrizione a parole della voce, `motore/disegna-voce.py`) e poi **clonata a ogni frase** dal modello Qwen3-TTS 0.6B Base. Il campione non contiene intercalari ("allora", "ehm") perché il clone tenderebbe a ripeterli.
+- La voce di partenza del motore è `voci/receptionist.wav`: un uomo milanese di circa 35 anni, naturale e professionale, con `voci/testo.txt` come trascrizione. In questa installazione è attiva la voce maschile clonata `voci/marco.wav`; la voce di Maria (`voci/maria.wav`) resta nell'elenco. La voce attiva è **clonata a ogni frase** dal modello Qwen3-TTS 0.6B Base. Il campione non contiene intercalari ("allora", "ehm") perché il clone tenderebbe a ripeterli.
+- **Scegliere la voce.** Pannello → scheda **Voce**: ascolti i campioni di `voci/`, premi **Attiva** su quello che vuoi e vale dalla chiamata successiva; da lì registri anche una voce nuova. Accanto a ogni `voci/<nome>.wav` sta `voci/<nome>.json` con `testo` (la trascrizione esatta del campione) e `tono` (quanto abbassare il registro: `0.84` per le voci femminili del motore, `1.0` per una voce maschile clonata, range `0.6`–`1.15`).
+- Il motore genera a 24 kHz e ricampiona a 8 kHz **in streaming continuo**, pezzo per pezzo, senza salti tra un pezzo e l'altro.
 - **Sostituirla con un'altra voce progettata.** Cambia la descrizione in `motore/disegna-voce.py` e lancia `python3 motore/disegna-voce.py 4` (quattro proposte). Ascolta `voci/proposta-N.wav` e copia la migliore (da 5 a 10 secondi) in `voci/receptionist.wav`. **Attenzione:** lo script **riscrive `voci/testo.txt` a ogni esecuzione** con il suo testo di esempio (la variabile `TESTO` dello script, lo stesso per tutte le proposte), anche se `receptionist.wav` non è cambiato. Dopo aver scelto la proposta, `voci/testo.txt` deve contenere esattamente quello che si sente nel campione che hai copiato: se hai tagliato l'audio, taglia anche il testo; se hai cambiato `TESTO`, il file è già giusto per le proposte nuove ma non per il vecchio `receptionist.wav` finché non lo sostituisci. Se rilanci lo script senza sostituire il campione attivo, rimetti a posto il testo (o salvane una copia prima).
 - **Clonare una voce tua.** Registra da 5 a 15 secondi di parlato pulito, senza intercalari, e scrivi esattamente quello che dici. Sostituisci i due file qui sopra, oppure imposta `TTS_RIF_AUDIO` (un wav a 24 kHz) e `TTS_RIF_TESTO` nel `.env`. **Clona una voce solo con il consenso esplicito di chi parla**, e non presentare a chi chiama una persona vera clonata come se fosse un'altra.
 - Senza un campione il motore usa uno speaker CustomVoice incorporato di Qwen3-TTS (`TTS_VOCE`), che ha un leggero accento straniero.
@@ -375,7 +379,7 @@ Durata dell'appuntamento 60 minuti, uno alla volta, preavviso minimo e orizzonte
 
 ### 3. La voce
 
-La voce predefinita (un uomo milanese, di nome "Luca") si adatta a un laboratorio vicino a Milano, quindi la teniamo. Per cambiarla, vedi [La voce](#la-voce). Saluto: `Lasercamp, buongiorno! Sono Luca, mi dica.`
+La voce dell'esempio (un uomo milanese, di nome "Luca") si adatta a un laboratorio vicino a Milano, quindi la teniamo. Per cambiarla, vedi [La voce](#la-voce). Saluto: `Lasercamp, buongiorno! Sono Luca, mi dica.`
 
 ### 4. Calendario
 
@@ -474,7 +478,7 @@ motore/
   disegna-voce.py    crea i campioni di voce con Qwen3-TTS VoiceDesign
   requirements.txt
 prove/               telefonate simulate, prova Twilio con un Twilio finto, matrice del tono, misure dei ritardi
-voci/                il campione della voce del receptionist (receptionist.wav, testo.txt)
+voci/                i campioni di voce (receptionist.wav, testo.txt; <nome>.wav con <nome>.json)
 demo/                due telefonate di esempio (mp3)
 docs/screenshot/     gli screenshot usati in questo README
 dati/                impostazioni e appuntamenti (creati all'avvio, esclusi da git)
