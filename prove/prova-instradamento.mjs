@@ -232,6 +232,34 @@ test('se il modello scrive solo il marcatore, la chiamata non resta muta', async
   assert.ok(dette.at(-1).testo.trim().length > 0, 'la frase di ripiego non può essere vuota');
 });
 
+test('il numero detto resta buono anche se il marcatore arriva due battute dopo', async () => {
+  const s = await scenario();
+  s.chiamata.chiamante = 'browser';
+  await s.chiamata.alTestoScritto('La macchina dà un errore.');
+  await s.cervello.rispondi('Preferisce che la faccia richiamare da un tecnico? <<INTENTO|assistenza_problema>>');
+  await s.chiamata.alTestoScritto('Sì, va bene.');
+  await s.cervello.rispondi('A che numero la possiamo richiamare? <<INTENTO|richiamata>>');
+  await s.chiamata.alTestoScritto('Il mio numero è tre tre tre uno due tre quattro cinque sei sette.');
+  await s.cervello.rispondi('Mi può dire il suo nome? <<INTENTO|richiamata>>');
+  await s.chiamata.alTestoScritto('Mario Rossi.');
+  await s.cervello.rispondi('Grazie. <<RICHIAMA|Mario Rossi|errore macchina>> <<INTENTO|richiamata>>');
+  assert.equal(s.salvati.richiami.length, 1, s.chiamata.logRighe.join('\n'));
+  assert.equal(s.salvati.richiami[0].telefono, '3331234567', 'il numero detto prima resta nel richiamo');
+});
+
+test('un numero detto per altro non diventa il recapito del richiamo', async () => {
+  const s = await scenario();
+  s.chiamata.chiamante = 'browser';
+  await s.chiamata.alTestoScritto('Devo incidere 300 targhe.');
+  await s.cervello.rispondi('Mi dica il materiale. <<INTENTO|preventivo_file>>');
+  await s.chiamata.alTestoScritto('Legno, ne faccio 300 pezzi.');
+  await s.cervello.rispondi('Perfetto, grazie. <<INTENTO|preventivo_file>>');
+  await s.chiamata.alTestoScritto('Il codice è 300456.');
+  await s.cervello.rispondi('Grazie. <<INTENTO|preventivo_file>>');
+  assert.equal(s.salvati.richiami.length, 0);
+  assert.equal(s.cervello.richieste.at(-1).testo, 'Il codice è 300456.');
+});
+
 test('richiamo da un numero noto: si usa quello del centralino, non serve chiederlo', async () => {
   const s = await scenario();
   await s.chiamata.alTestoScritto('La macchina dà un errore.');

@@ -173,6 +173,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   let ultimoReceptionist = '';
   let dettoInTurno = false; // questa battuta ha prodotto qualcosa da dire al cliente
   let richiamoAppenaSalvato = false; // il RICHIAMA di questa battuta è stato registrato adesso
+  let ultimoNumeroDettato = ''; // numero detto dopo "a che numero la possiamo richiamare?"
+  let consensoRichiamoDato = false; // il cliente ha chiesto o accettato il richiamo in questa telefonata
   const statoIntento = { intento: 'altro', fonte: 'fallback', candidati: [], visti: [] };
   const gestioneRichieste = impostazioni().gestioneRichieste;
   const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
@@ -291,6 +293,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     logFrase('👤', detto, { ascoltoMs: t.ms, voceOccupata: Boolean(t.voce_occupata) });
     testo('cliente', detto);
     ultimoCliente = detto;
+    annotaNumeroDettato(detto);
+    annotaConsensoRichiamo(detto);
     const registrato = await registraConfermaInAttesa(detto);
     const richiamoRegistrato = await registraRichiamoInAttesa(detto);
     await attaccaNumero(detto);
@@ -337,6 +341,20 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   function numeroChiestoEDetto(proposta) {
     if (!/\bnumero\b/i.test(String(proposta || ''))) return '';
     return numeroDaVoce(ultimoCliente);
+  }
+
+  // Lo stesso numero resta buono per tutta la telefonata: se il modello scrive il marcatore
+  // RICHIAMA qualche battuta dopo, senza ripetere le cifre, il richiamo non resta senza recapito.
+  function annotaNumeroDettato(detto) {
+    if (!/\bnumero\b/i.test(ultimoReceptionist)) return;
+    const numero = numeroDaVoce(detto);
+    if (numero) ultimoNumeroDettato = numero;
+  }
+
+  // Il sì al richiamo vale per tutta la telefonata: se il modello scrive il marcatore più tardi,
+  // il consenso già dato non va perso (e il richiamo non resta appeso).
+  function annotaConsensoRichiamo(detto) {
+    if (consensoRichiamo(detto, ultimoReceptionist)) consensoRichiamoDato = true;
   }
 
   // Se il modello scrive solo i marcatori non resta niente da dire e la linea cade nel silenzio:
@@ -454,7 +472,9 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
           // "A che numero la possiamo richiamare?" → "333 123 4567": il numero dato è la risposta,
           // non serve un altro "sì". Senza questo il richiamo restava in attesa per sempre.
           const dettatoDalCliente = numeroChiestoEDetto(precedente);
-          const dati = { nome: nome || 'non detto', motivo, telefono: dettato || dettatoDalCliente };
+          const telefono = dettato || dettatoDalCliente || ultimoNumeroDettato;
+          const dati = { nome: nome || 'non detto', motivo, telefono };
+          const haRecapito = Boolean(telefono) || numeroNoto(chiamata.chiamante);
           if (!['assistenza_problema', 'richiamata'].includes(statoIntento.intento)) {
             richiamoInAttesa = null;
             chiamata.log(`⚠️ RICHIAMA ignorato: intento ${statoIntento.intento}`);
@@ -462,7 +482,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
             chiamata.log('⚠️ RICHIAMA ignorato: manca il motivo');
           } else if (richiamoId) {
             chiamata.log('⚠️ RICHIAMA ignorato: il richiamo di questa chiamata è già stato registrato');
-          } else if (consensoRichiamo(ultimoCliente, precedente) || dettatoDalCliente) {
+          } else if (consensoRichiamo(ultimoCliente, precedente) || dettatoDalCliente || (consensoRichiamoDato && haRecapito)) {
             richiamoAppenaSalvato = await salvaRichiamo(dati, 'con richiesta o consenso esplicito');
           } else {
             richiamoInAttesa = dati;
@@ -640,6 +660,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     logFrase('⌨️', t);
     testo('cliente', t.trim());
     ultimoCliente = t.trim();
+    annotaNumeroDettato(t.trim());
+    annotaConsensoRichiamo(t.trim());
     fineTurno = Date.now();
     const registrato = await registraConfermaInAttesa(t.trim());
     const richiamoRegistrato = await registraRichiamoInAttesa(t.trim());
