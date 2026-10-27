@@ -9,6 +9,9 @@ import { inRoma } from '../src/agenda.mjs';
 const AUDIO = Buffer.from([0xff]);
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Il riepilogo varia a ogni chiamata: queste sono le chiuse possibili.
+const RIEPILOGO = /torna tutto|ricapitolo|mi confermi|giusto così|capito bene/i;
+
 function cervelloFinto() {
   let numero = 0;
   return {
@@ -96,7 +99,7 @@ test('se il modello chiude senza riepilogare, il riepilogo lo dice il sistema', 
   await s.cervello.rispondi('Perfetto, è tutto pronto. <<CONFERMA|Mario Rossi|2026-10-27|09:00|targhe incise|mario@esempio.it>> <<INTENTO|appuntamento>>');
   await pausa(50);
   assert.equal(s.salvati.appuntamenti.length, 0, 'senza il sì del cliente non si registra niente');
-  const riepilogo = s.dette.find((t) => /torna tutto/i.test(t));
+  const riepilogo = s.dette.find((t) => RIEPILOGO.test(t));
   assert.ok(riepilogo, `manca il riepilogo: ${s.dette.join(' | ')}`);
   assert.match(riepilogo, /Mario Rossi/);
   assert.match(riepilogo, /martedì ventisette ottobre/);
@@ -132,7 +135,7 @@ test('il giorno detto dal cliente vince sulla data sbagliata del modello', async
   await s.chiamata.alTestoScritto('Domani alle nove va bene, sono Mario Rossi.');
   await s.cervello.rispondi(`Sì, perfetto. <<CONFERMA|Mario Rossi|${sbagliato}|09:00|targhe incise|mario@esempio.it>> <<INTENTO|appuntamento>>`);
   await pausa(50);
-  const riepilogo = s.dette.find((t) => /torna tutto/i.test(t));
+  const riepilogo = s.dette.find((t) => RIEPILOGO.test(t));
   assert.ok(riepilogo, `manca il riepilogo: ${s.dette.join(' | ')}`);
   assert.match(riepilogo, /domani|ventotto|ventinove|trenta|novembre/i);
   await s.chiamata.alTestoScritto('Sì, va bene.');

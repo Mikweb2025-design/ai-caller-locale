@@ -117,6 +117,21 @@ const piano = rms(dinamicaUscita.subarray(0, meta), 2400);
 const forte = rms(dinamicaUscita.subarray(meta), 2400);
 assert.ok(forte / piano < 2.6, `volume ancora troppo variabile: ${(forte / piano).toFixed(2)}`);
 
-console.log('10 controlli timbro voce superati', {
+// Il registro di partenza dipende dalla voce: una voce maschile clonata (marco.wav, "tono": 1)
+// non va abbassata, altrimenti il grano del pitch-shift aggiunge un fruscio metallico a tratti.
+const marco = creaAddolcitoreVoce('marco.wav').applica(tono(220));
+assert.ok(Math.abs(frequenza(marco) - 220) < 12, `voce maschile abbassata per sbaglio: ${frequenza(marco).toFixed(0)} Hz`);
+// Il pitch-shift a grani lascia una coda da svuotare a fine frase: con tono 1 non c'è.
+const catenaMarco = creaAddolcitoreVoce('marco.wav');
+catenaMarco.applica(tono(220));
+assert.equal(catenaMarco.chiudi().length, 0, 'con tono 1 la catena non deve passare dal pitch-shift');
+const catenaFemminile = creaAddolcitoreVoce('voce-f-2.wav');
+catenaFemminile.applica(tono(220));
+assert.ok(catenaFemminile.chiudi().length > 0, 'la voce femminile deve ancora passare dal pitch-shift');
+// Una voce senza JSON resta trattata come prima (0.84).
+const senzaJson = creaAddolcitoreVoce('voce-senza-json.wav').applica(tono(220));
+assert.ok(frequenza(senzaJson) / 220 < 0.9, `voce senza tono non abbassata: ${frequenza(senzaJson).toFixed(0)} Hz`);
+
+console.log('12 controlli timbro voce superati', {
   corpo: corpo.toFixed(1), squillo: squillo.toFixed(1), bordo: bordo.toFixed(1), livello: Math.round(livello), notaUscita, secondi: secondi.toFixed(2), clic: `${saltoUscita}/${saltoIngresso}`,
 });

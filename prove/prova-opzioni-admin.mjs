@@ -29,7 +29,10 @@ try {
   prompt = istruzioni();
   assert.match(prompt, /"dunque", "controllo"/i);
   assert.match(prompt, /“Scherza con il cliente” è DISATTIVATA/i);
-  assert.equal(creaRegolatoreIntercalari(impostazioni().receptionist.intercalare)('Quale lavorazione le serve?', 2), 'dunque, quale lavorazione le serve?');
+  assert.match(
+    creaRegolatoreIntercalari(impostazioni().receptionist.intercalare)('Quale lavorazione le serve?', 2),
+    /^(Dunque|Controllo), quale lavorazione le serve\?$/,
+  );
 
   salvaImpostazioni({ receptionist: { scherza: true, intercalare: 'senta, verifico' } });
   prompt = istruzioni();
@@ -38,7 +41,10 @@ try {
   assert.match(prompt, /“Scherza con il cliente” è ATTIVA/i);
   assert.match(prompt, /risatina scritta "eh eh".*al massimo una volta/is);
   assert.match(prompt, /"senta", "verifico"/i);
-  assert.equal(creaRegolatoreIntercalari(impostazioni().receptionist.intercalare)('Mi racconti il progetto?', 2), 'senta, mi racconti il progetto?');
+  assert.match(
+    creaRegolatoreIntercalari(impostazioni().receptionist.intercalare)('Mi racconti il progetto?', 2),
+    /^(Senta|Verifico), mi racconti il progetto\?$/,
+  );
 
   console.log('Admin verificato: scherzi e intercalari seguono i valori salvati.');
 } finally {

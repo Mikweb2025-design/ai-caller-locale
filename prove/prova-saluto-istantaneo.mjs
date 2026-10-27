@@ -55,11 +55,37 @@ test('al telefono il saluto parte con un breve silenzio: la prima parola non si 
   });
   await chiamata.alPartire();
   assert.ok(attesa, 'deve aspettare che la linea sia aperta');
-  assert.equal(chiamata._inviati.length, 2, 'silenzio + saluto');
+  assert.equal(chiamata._inviati.length, 1, 'silenzio e saluto viaggiano nello stesso pacchetto');
   const primo = Buffer.from(chiamata._inviati[0].base64, 'base64');
-  assert.equal(primo.length, 1200 * 8, 'silenzio iniziale di 1200 ms');
-  assert.ok(primo.every((b) => b === 0xff), 'il silenzio μ-law è 0xFF');
-  assert.deepEqual(Buffer.from(chiamata._inviati[1].base64, 'base64'), AUDIO);
+  const silenzio = primo.subarray(0, 1200 * 8);
+  assert.equal(silenzio.length, 1200 * 8, 'silenzio iniziale di 1200 ms');
+  assert.ok(silenzio.every((b) => b === 0xff), 'il silenzio μ-law è 0xFF');
+  assert.deepEqual(primo.subarray(1200 * 8), AUDIO, 'poi il saluto, intero');
+});
+
+test('nel browser il saluto parte con lo stesso silenzio protettivo: la prima sillaba non si perde', async () => {
+  const chiamata = chiamataFinta(); // web: true
+  gestisciChiamata(chiamata, {
+    preparaCervello: async () => cervelloFinto(),
+    pronuncia: async () => { throw new Error('non deve sintetizzare'); },
+    fraseSubito: () => AUDIO,
+    salutoCompleto: () => 'Buongiorno, sono Maria.',
+    salutoSegmenti: () => [{ testo: 'Buongiorno, sono Maria.', lingua: 'it' }],
+    creaRumoreAttesa: () => ({ inCorso: false, avvia: () => false, ferma: () => false }),
+    creaSuonoContinuo: () => ({ strappa: () => null }),
+    mescolaSuono: (voce) => voce,
+    creaCodaUfficio: () => Buffer.alloc(0),
+    postiLiberi: async () => [],
+    confermaAppuntamento: async () => ({ ok: true }),
+    registraRichiamo: async () => ({ ok: true, richiamo: { id: 'r1' } }),
+    aggiornaRichiamo: async () => null,
+  });
+  await chiamata.alPartire();
+  assert.equal(chiamata._inviati.length, 1, 'silenzio e saluto viaggiano nello stesso pacchetto');
+  const primo = Buffer.from(chiamata._inviati[0].base64, 'base64');
+  assert.equal(primo.length, 300 * 8 + AUDIO.length, 'silenzio di 300 ms + saluto');
+  assert.ok(primo.subarray(0, 300 * 8).every((b) => b === 0xff), 'il silenzio μ-law è 0xFF');
+  assert.deepEqual(primo.subarray(300 * 8), AUDIO, 'poi il saluto, intero');
 });
 
 test('al telefono ogni risposta parte con un breve silenzio: la prima sillaba non si mangia', async () => {
