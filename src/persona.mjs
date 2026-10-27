@@ -28,7 +28,7 @@ function orariApertura() {
 
 // posti: l'elenco dei posti liberi giorno per giorno (agenda.postiPerIstruzioni)
 // Numero del chiamante: Twilio lo passa, ma può arrivare anonimo o da una chiamata dal browser.
-const numeroNoto = (chiamante) => Boolean(chiamante) && chiamante !== 'browser' && !/^(anonymous|anonimo|privato|private|restricted|unknown|sconosciuto)$/i.test(String(chiamante).trim());
+export const numeroNoto = (chiamante) => Boolean(chiamante) && chiamante !== 'browser' && !/^(anonymous|anonimo|privato|private|restricted|unknown|sconosciuto)$/i.test(String(chiamante).trim());
 
 export function istruzioni({ chiamante = null, posti = '' } = {}) {
   const { attivita, receptionist, agenda, email, lingue, gestioneRichieste } = impostazioni();

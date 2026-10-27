@@ -1,7 +1,13 @@
 const INCERTO_O_CONDIZIONALE = /\?|\b(?:forse|se|dipende|devo pensarci|ci penso|non (?:sono|ne sono) sicur[oa]|vielleicht|wenn|ich überlege)\b/u;
 
 function rispostaAffermativa(testo) {
-  if (!testo || INCERTO_O_CONDIZIONALE.test(testo)) return false;
+  if (!testo || INCERTO_O_CONDIZIONALE.test(testo) || /\?/.test(testo)) return false;
+  // "Sì, confermo tutti i dati del riepilogo." è un sì: basta l'apertura affermativa, senza
+  // negazioni, correzioni o domande. Prima serviva la frase fatta e il consenso andava perso
+  // (l'appuntamento o il richiamo non venivano registrati).
+  if (/^(?:sì|si|ok|okay|okey|d'accordo|confermo|esatto|corretto|va bene|è tutto corretto|tutto corretto|ja|genau|das stimmt|ich bestätige)(?![a-zàèéìòùäöüß0-9])/u.test(testo)
+    && !/\b(?:no|non|nein|nicht|ma|però|invece|anzi|piuttosto|solo che)\b/u.test(testo)
+    && testo.split(/\s+/).length <= 12) return true;
   return /^(?:sì|si|ok|okay|okey|d'accordo|confermo|esatto|corretto|va bene|è tutto corretto|tutto corretto|ja|genau|das stimmt|ich bestätige)(?:[, ]+(?:certo|grazie|grazie mille|perfetto|ciao|arrivederci|confermo|esatto|corretto|è tutto corretto|tutto corretto|va bene|va benissimo|gerne|danke|perfekt))*[.!]*$/u.test(testo);
 }
 

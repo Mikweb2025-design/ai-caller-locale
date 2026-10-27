@@ -207,6 +207,31 @@ test('richiamo dal browser: il numero dettato dal cliente viene salvato, senza f
   assert.equal(s.salvati.richiami[0].motivo, 'errore macchina', 'il numero non deve finire nel motivo');
 });
 
+test('cliente detta il numero dopo la domanda: è consenso, il richiamo si registra', async () => {
+  const s = await scenario();
+  s.chiamata.chiamante = 'browser';
+  await s.chiamata.alTestoScritto('La macchina dà un errore.');
+  await s.cervello.rispondi('Posso farla richiamare da un tecnico, a che numero la possiamo richiamare? <<INTENTO|assistenza_problema>>');
+  await s.chiamata.alTestoScritto('3331234567');
+  await s.cervello.rispondi('La faccio richiamare. <<RICHIAMA|Mario Rossi|errore macchina|3331234567>> <<INTENTO|richiamata>>');
+  assert.equal(s.salvati.richiami.length, 1, s.chiamata.logRighe.join('\n'));
+  assert.equal(s.salvati.richiami[0].telefono, '3331234567');
+  assert.equal(s.salvati.richiami[0].motivo, 'errore macchina');
+});
+
+test('se il modello scrive solo il marcatore, la chiamata non resta muta', async () => {
+  const s = await scenario();
+  s.chiamata.chiamante = 'browser';
+  await s.chiamata.alTestoScritto('La macchina dà un errore.');
+  await s.cervello.rispondi('Posso farla richiamare da un tecnico, a che numero la possiamo richiamare? <<INTENTO|assistenza_problema>>');
+  const prima = s.chiamata.trascrizione.filter((r) => r.chi === 'receptionist').length;
+  await s.chiamata.alTestoScritto('3331234567');
+  await s.cervello.rispondi('<<RICHIAMA|Mario Rossi|errore macchina|3331234567>> <<INTENTO|richiamata>>');
+  const dette = s.chiamata.trascrizione.filter((r) => r.chi === 'receptionist').slice(prima);
+  assert.ok(dette.length >= 1, `silenzio totale dopo il numero:\n${s.chiamata.logRighe.join('\n')}`);
+  assert.ok(dette.at(-1).testo.trim().length > 0, 'la frase di ripiego non può essere vuota');
+});
+
 test('richiamo da un numero noto: si usa quello del centralino, non serve chiederlo', async () => {
   const s = await scenario();
   await s.chiamata.alTestoScritto('La macchina dà un errore.');

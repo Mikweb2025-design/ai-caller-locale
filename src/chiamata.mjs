@@ -2,7 +2,7 @@
 // Claude Code e legge la risposta con Qwen3-TTS, una frase alla volta mentre Claude scrive.
 // Funziona uguale per Twilio e per la chiamata dal browser (stesso protocollo Media Streams).
 import { CONFIG } from './config.mjs';
-import { istruzioni, salutoSegmenti, salutoCompleto } from './persona.mjs';
+import { istruzioni, salutoSegmenti, salutoCompleto, numeroNoto } from './persona.mjs';
 import { postiLiberi, postiPerIstruzioni } from './agenda.mjs';
 import { confermaAppuntamento, registraRichiamo, attaccaTelefonoRichiamo } from './strumenti.mjs';
 import { Cervello } from './cervello.mjs';
@@ -171,6 +171,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   let richiamoInAttesa = null;
   let ultimoCliente = ''; // l'ultima frase del cliente, per capire se ha davvero salutato
   let ultimoReceptionist = '';
+  let dettoInTurno = false; // questa battuta ha prodotto qualcosa da dire al cliente
+  let richiamoAppenaSalvato = false; // il RICHIAMA di questa battuta è stato registrato adesso
   const statoIntento = { intento: 'altro', fonte: 'fallback', candidati: [], visti: [] };
   const gestioneRichieste = impostazioni().gestioneRichieste;
   const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
@@ -330,11 +332,34 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     }
   }
 
+  // Il cliente detta il numero dopo che il receptionist l'ha chiesto: è la risposta alla domanda,
+  // quindi vale come consenso al richiamo.
+  function numeroChiestoEDetto(proposta) {
+    if (!/\bnumero\b/i.test(String(proposta || ''))) return '';
+    return numeroDaVoce(ultimoCliente);
+  }
+
+  // Se il modello scrive solo i marcatori non resta niente da dire e la linea cade nel silenzio:
+  // chi chiama crede che la telefonata si sia bloccata. Meglio una frase di servizio.
+  function fraseDiRipiego() {
+    const de = linguaVoce === 'de';
+    if (richiamoInAttesa) {
+      if (!richiamoInAttesa.telefono && !numeroNoto(chiamata.chiamante)) {
+        return de ? 'Gerne, ich lasse Sie zurückrufen. Unter welcher Nummer?' : 'Certo, la faccio richiamare da un collega. A che numero la possiamo richiamare?';
+      }
+      return de ? 'Gerne, ich lasse Sie von einem Kollegen zurückrufen.' : 'Certo, la faccio richiamare da un collega.';
+    }
+    if (richiamoAppenaSalvato) return de ? 'Gerne, ein Kollege ruft Sie zurück. Kann ich sonst noch helfen?' : 'Perfetto, ho segnato il richiamo. Le serve altro?';
+    if (confermaInAttesa) return de ? 'Passt das so für Sie?' : 'Le torna tutto?';
+    return de ? 'Entschuldigung, können Sie das wiederholen?' : 'Mi scusi, può ripetere?';
+  }
+
   function collegaCervello() {
     const emetti = (grezzo, n) => {
       const parlato = regolaIntercalare(grezzo, n).trim();
       if (!parlato) return;
       testoTurno = parlato;
+      dettoInTurno = true;
       leggi(parlato);
     };
     cervello.alTesto = (pezzo, n) => {
@@ -345,6 +370,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     };
     cervello.allaFine = async (completo, n) => {
       if (n !== turno) return;
+      dettoInTurno = false;
+      richiamoAppenaSalvato = false;
       const riconosciuto = estraiIntento(completo, statoIntento.candidati, {
         automatica: gestioneRichieste?.automatica !== false,
       });
@@ -424,7 +451,10 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
           const ultimo = a.argomenti[a.argomenti.length - 1];
           const dettato = a.argomenti.length > 2 ? numeroDettato(ultimo) : '';
           const motivo = campoAzione((dettato ? a.argomenti.slice(1, -1) : a.argomenti.slice(1)).join(' '), 1000);
-          const dati = { nome: nome || 'non detto', motivo, telefono: dettato };
+          // "A che numero la possiamo richiamare?" → "333 123 4567": il numero dato è la risposta,
+          // non serve un altro "sì". Senza questo il richiamo restava in attesa per sempre.
+          const dettatoDalCliente = numeroChiestoEDetto(precedente);
+          const dati = { nome: nome || 'non detto', motivo, telefono: dettato || dettatoDalCliente };
           if (!['assistenza_problema', 'richiamata'].includes(statoIntento.intento)) {
             richiamoInAttesa = null;
             chiamata.log(`⚠️ RICHIAMA ignorato: intento ${statoIntento.intento}`);
@@ -432,8 +462,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
             chiamata.log('⚠️ RICHIAMA ignorato: manca il motivo');
           } else if (richiamoId) {
             chiamata.log('⚠️ RICHIAMA ignorato: il richiamo di questa chiamata è già stato registrato');
-          } else if (consensoRichiamo(ultimoCliente, precedente)) {
-            await salvaRichiamo(dati, 'con richiesta o consenso esplicito');
+          } else if (consensoRichiamo(ultimoCliente, precedente) || dettatoDalCliente) {
+            richiamoAppenaSalvato = await salvaRichiamo(dati, 'con richiesta o consenso esplicito');
           } else {
             richiamoInAttesa = dati;
             chiamata.log('⏸️ RICHIAMA in attesa della richiesta o del consenso esplicito');
@@ -453,6 +483,17 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
             chiamata.riaggancia();
           }
         }
+      }
+      // Niente da dire ma azione sì (o risposta fatta di soli marcatori): la linea non deve
+      // restare muta in attesa che il cliente parli di nuovo.
+      if (!dettoInTurno && !chiudere && n === turno) {
+        const ripiego = fraseDiRipiego();
+        emetti(ripiego, n);
+        const servizio = testoTurno.trim();
+        ultimoReceptionist = servizio;
+        logFrase('🤖', servizio);
+        testo('receptionist', servizio);
+        chiamata.log('🩹 il modello non ha scritto nulla da dire: frase di servizio');
       }
     };
   }
@@ -537,7 +578,8 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
       const dettoNumero = numeroDaVoce(detto);
       if (dettoNumero) richiamoInAttesa.telefono = dettoNumero;
     }
-    if (!consensoRichiamo(detto, ultimoReceptionist)) {
+    // il numero detto dopo "a che numero la possiamo richiamare?" è la risposta alla domanda
+    if (!consensoRichiamo(detto, ultimoReceptionist) && !numeroChiestoEDetto(ultimoReceptionist)) {
       if (/\b(no|non|lasci|niente|nein|nicht)\b/i.test(detto)) richiamoInAttesa = null;
       return false;
     }
