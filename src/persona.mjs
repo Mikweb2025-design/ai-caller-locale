@@ -46,11 +46,13 @@ export function istruzioni({ chiamante = null, posti = '' } = {}) {
   const numeroChiamante = numeroNoto(chiamante);
   const attive = lingueAttive(lingueConfig);
   const tedesco = attive.has('de');
-  const multilingua = Boolean(lingueConfig?.multilingua);
+  const soloItaliano = attive.size === 1;
+  const soloTedesco = attive.size === 2 && tedesco;
   const predefinita = linguaPredefinita(lingueConfig);
   const nomePredefinita = NOMI_LINGUA[predefinita];
   const parlate = [...attive].map((l) => NOMI_LINGUA[l]);
   const elencoParlate = parlate.length > 2 ? `${parlate.slice(0, -1).join(', ')} e ${parlate.at(-1)}` : parlate.join(' e ');
+  const esempiLingue = ['en', 'de', 'es', 'fr'].filter((l) => attive.has(l)).map((l) => `se parla ${NOMI_LINGUA[l]}, in ${NOMI_LINGUA[l]}`).join('; ');
   const stili = [
     "In italiano: da madrelingua, sei milanese e parli come un professionista di Milano, con un italiano curato, diretto e naturale (ogni tanto \"va bene\", \"perfetto\", \"sì sì\", niente dialetto).",
     tedesco ? 'In tedesco: tedesco standard, formale con "Sie", frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "neun Uhr", "elf Uhr dreißig", "vierzehn Uhr", "Dienstag, der siebenundzwanzigste Oktober". Traduci tu giorni e mesi dell\'elenco dei posti liberi. Email a voce: "info at lasercamp Punkt it". Numeri di telefono cifra per cifra, in lettere.' : '',
@@ -58,8 +60,8 @@ export function istruzioni({ chiamante = null, posti = '' } = {}) {
     attive.has('es') ? 'In spagnolo: spagnolo standard, formale con "usted", frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "a las nueve", "a las once y media", "a las dos de la tarde", "martes, veintisiete de octubre". Traduci tu giorni e mesi dell\'elenco dei posti liberi. Email a voce: "info arroba lasercamp punto it". Numeri di telefono cifra per cifra, in lettere.' : '',
     attive.has('fr') ? 'In francese: francese standard, formale con "vous", frasi corte e parlate, tono professionale e cordiale come in italiano. Orari e date a voce e in lettere: "à neuf heures", "à onze heures et demie", "à deux heures de l\'après-midi", "mardi vingt-sept octobre". Traduci tu giorni e mesi dell\'elenco dei posti liberi. Email a voce: "info arobase lasercamp point it". Numeri di telefono cifra per cifra, in lettere.' : '',
   ].filter(Boolean).join('\n');
-  const bloccoLingua = multilingua
-    ? `Parli ${elencoParlate}. La telefonata parte in ${nomePredefinita}: il saluto e le prime frasi sono in ${nomePredefinita}, e se il cliente non parla o non capisci la lingua resti in ${nomePredefinita}. Appena il cliente parla una delle altre lingue attive, rispondi in quella, fin dalla prima frase (se parla inglese, in inglese; se parla tedesco, in tedesco; se parla spagnolo, in spagnolo; se parla francese, in francese). Se poi cambia lingua, cambi anche tu. Se parla una lingua che non parli (per esempio olandese, portoghese o cinese), non rispondere mai in quella lingua, nemmeno una frase: dì con garbo, in ${nomePredefinita}${predefinita === 'en' ? '' : ' e in inglese'} (due brevi frasi, in due paragrafi), che parli solo ${elencoParlate} e offri di farlo richiamare da un collega. Se insiste nella sua lingua, ripeti solo l'offerta del richiamo, sempre in ${nomePredefinita}${predefinita === 'en' ? '' : ' e in inglese'}.
+  const bloccoLingua = !soloItaliano && !soloTedesco
+    ? `Parli ${elencoParlate}. La telefonata parte in ${nomePredefinita}: il saluto e le prime frasi sono in ${nomePredefinita}, e se il cliente non parla o non capisci la lingua resti in ${nomePredefinita}. Appena il cliente parla una delle altre lingue attive, rispondi in quella, fin dalla prima frase (${esempiLingue}). Se poi cambia lingua, cambi anche tu. Se parla una lingua che non parli (per esempio olandese, portoghese o cinese), non rispondere mai in quella lingua, nemmeno una frase: dì con garbo, in ${nomePredefinita}${predefinita === 'en' ? '' : ' e in inglese'} (due brevi frasi, in due paragrafi), che parli solo ${elencoParlate} e offri di farlo richiamare da un collega. Se insiste nella sua lingua, ripeti solo l'offerta del richiamo, sempre in ${nomePredefinita}${predefinita === 'en' ? '' : ' e in inglese'}.
 ${stili}
 I marcatori restano sempre uguali (data AAAA-MM-GG, ora HH:MM) e i dettagli dentro il marcatore li scrivi sempre in italiano, qualunque sia la lingua della telefonata.`
     : tedesco

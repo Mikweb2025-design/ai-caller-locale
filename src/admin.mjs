@@ -70,6 +70,10 @@ export function paginaAdmin({ api, web, feed, avatar }) {
   .riga { display:flex; gap:8px; align-items:center; }
   .check { display:flex; gap:8px; align-items:center; font-weight:500; }
   .check input { width:auto; }
+  .lingue { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+  .lingua { display:flex; align-items:center; gap:6px; margin:0; padding:7px 12px; border:1px solid var(--bordo); border-radius:999px; background:var(--sfondo); font-weight:600; font-size:13px; cursor:pointer; }
+  .lingua input { width:auto; margin:0; }
+  .lingua:has(input:checked) { border-color:var(--accento); background:color-mix(in srgb, var(--accento) 14%, var(--sfondo)); }
   button { padding:9px 16px; border-radius:999px; border:0; font:inherit; font-weight:600; cursor:pointer; background:var(--accento); color:#fff; }
   button.secondario { background:transparent; color:var(--testo); border:1px solid var(--bordo); }
   button.pericolo { background:transparent; color:var(--rosso); border:1px solid var(--rosso); padding:5px 12px; font-size:13px; }
@@ -167,10 +171,24 @@ export function paginaAdmin({ api, web, feed, avatar }) {
     <label class="check"><input type="checkbox" data-k="receptionist.scherza"> <strong>Scherza con il cliente</strong> <small>attivo: si adatta al suo umorismo; spento: resta cordiale e professionale, senza battute</small></label>
     <div style="margin-top:12px"><label>Intercalari <small>(espressioni naturali, separate da virgola: ne usa una entro le prime due risposte, poi non più di una ogni tre. Vuoto = nessuno)</small></label><input data-k="receptionist.intercalare" placeholder="es. allora, un attimo solo, vediamo"></div>
     <h2 style="margin-top:18px">Lingue</h2>
-    <p class="aiuto">L'italiano c'è sempre. Con <strong>Multilingua</strong> il receptionist risponde nella lingua di chi chiama — inglese, tedesco, spagnolo e francese — anche dentro la stessa telefonata. <strong>Lingua di default</strong>: il saluto e le prime frasi partono in quella lingua, poi il receptionist segue chi chiama. Il tedesco si può attivare anche da solo.</p>
-    <label class="check"><input type="checkbox" data-k="lingue.multilingua"> <strong>Multilingua</strong> <small>inglese, tedesco, spagnolo e francese</small></label>
-    <label class="check" style="margin-top:8px"><input type="checkbox" data-k="lingue.tedesco"> Solo tedesco <small>(se Multilingua è spento)</small></label>
-    <div style="margin-top:12px"><label>Lingua di default <small>(saluto e prime frasi; se non è tra le lingue attive resta l'italiano)</small></label><select data-k="lingue.predefinita"><option value="it">Italiano</option><option value="en">Inglese</option><option value="de">Tedesco</option><option value="es">Spagnolo</option><option value="fr">Francese</option></select></div>
+    <p class="aiuto">L'italiano c'è sempre. Scegli con i pulsanti le lingue che il receptionist capisce: risponde in quella di chi chiama, anche a metà telefonata. Il saluto e le prime frasi sono <strong>solo nella lingua del saluto</strong>: non parla in tutte le lingue una dopo l'altra.</p>
+    <label>Lingue che capisce</label>
+    <div class="lingue" id="lingueAttive" role="group" aria-label="Lingue che capisce">
+      <label class="lingua"><input type="checkbox" value="en"> Inglese</label>
+      <label class="lingua"><input type="checkbox" value="de"> Tedesco</label>
+      <label class="lingua"><input type="checkbox" value="es"> Spagnolo</label>
+      <label class="lingua"><input type="checkbox" value="fr"> Francese</label>
+    </div>
+    <div style="margin-top:14px">
+      <label>Lingua del saluto <small>(una sola)</small></label>
+      <div class="lingue" id="linguaSaluto" role="radiogroup" aria-label="Lingua del saluto">
+        <label class="lingua"><input type="radio" name="linguaSaluto" value="it"> Italiano</label>
+        <label class="lingua"><input type="radio" name="linguaSaluto" value="en"> Inglese</label>
+        <label class="lingua"><input type="radio" name="linguaSaluto" value="de"> Tedesco</label>
+        <label class="lingua"><input type="radio" name="linguaSaluto" value="es"> Spagnolo</label>
+        <label class="lingua"><input type="radio" name="linguaSaluto" value="fr"> Francese</label>
+      </div>
+    </div>
     <div class="griglia" style="margin-top:12px">
       <div><label>Saluto in inglese <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoInglese"></div>
       <div><label>Saluto in tedesco <small>({nome} = nome del receptionist)</small></label><input data-k="lingue.salutoTedesco"></div>
@@ -650,15 +668,35 @@ function riempi() {
     const v = prendi(dati, el.dataset.k);
     if (el.type === 'checkbox') el.checked = Boolean(v); else el.value = v ?? '';
   }
+  riempiLingue();
   $('#pwInfo').textContent = dati.email.passwordImpostata ? '(impostata)' : '(non impostata)';
   $('#twInfo').textContent = dati.twilio.segretoImpostato ? '(impostato)' : '';
   $('#twInfoAuth').textContent = dati.twilio.authTokenImpostato ? '(impostato)' : '';
   statoTwilio();
   anteprimaDesign();
 }
+// I pulsanti per lingua scrivono l'elenco delle lingue attive e quella del saluto: una sola.
+function riempiLingue() {
+  const lingue = dati.lingue || {};
+  const attive = new Set(Array.isArray(lingue.attive) ? lingue.attive : []);
+  for (const el of document.querySelectorAll('#lingueAttive input')) el.checked = attive.has(el.value);
+  const scelta = lingue.predefinita || 'it';
+  for (const el of document.querySelectorAll('#linguaSaluto input')) el.checked = el.value === scelta;
+  const nessuna = !document.querySelector('#linguaSaluto input:checked');
+  if (nessuna) document.querySelector('#linguaSaluto input[value="it"]').checked = true;
+}
+function raccogliLingue(o) {
+  const attive = ['it', ...[...document.querySelectorAll('#lingueAttive input:checked')].map((el) => el.value)];
+  const scelta = document.querySelector('#linguaSaluto input:checked')?.value || 'it';
+  // la lingua del saluto si può scegliere anche senza averla spuntata: la attivo io
+  if (scelta !== 'it' && !attive.includes(scelta)) attive.push(scelta);
+  o.lingue = { ...(o.lingue || {}), attive: [...new Set(attive)], predefinita: scelta };
+  return o;
+}
 function raccogli() {
   const o = {};
   for (const el of document.querySelectorAll('[data-k]')) metti(o, el.dataset.k, el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value);
+  raccogliLingue(o);
   o.calendari = [...document.querySelectorAll('.conto:not(.cervello)')].map(leggiConto);
   o.cervello = {};
   for (const d of document.querySelectorAll('.cervello')) o.cervello[d.dataset.slot] = leggiCervello(d);

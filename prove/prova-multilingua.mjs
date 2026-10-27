@@ -17,7 +17,7 @@ try {
   const { consensoPrenotazione, consensoRichiamo, congedoCliente } = await import('../src/consenso.mjs');
 
   // Spento: solo italiano.
-  salvaImpostazioni({ lingue: { tedesco: false, multilingua: false, predefinita: 'it' } });
+  salvaImpostazioni({ lingue: { attive: ['it'], predefinita: 'it' } });
   assert.deepEqual([...lingueAttive()], ['it']);
   assert.equal(salutoSegmenti().length, 1);
   let prompt = istruzioni();
@@ -25,19 +25,29 @@ try {
   assert.doesNotMatch(prompt, /In inglese:/i);
 
   // Solo tedesco, come prima.
-  salvaImpostazioni({ lingue: { tedesco: true, multilingua: false, predefinita: 'it' } });
+  salvaImpostazioni({ lingue: { attive: ['it', 'de'], predefinita: 'it' } });
   assert.deepEqual([...lingueAttive()].sort(), ['de', 'it']);
   assert.deepEqual(salutoSegmenti().map((s) => s.lingua), ['it']);
   prompt = istruzioni();
   assert.match(prompt, /Parli italiano e tedesco/i);
 
+  // Le lingue si accendono una per una: solo spagnolo, per esempio.
+  salvaImpostazioni({ lingue: { attive: ['it', 'es'], predefinita: 'it' } });
+  assert.deepEqual([...lingueAttive()].sort(), ['es', 'it']);
+  assert.match(istruzioni(), /Parli italiano e spagnolo/i);
+  assert.equal(linguaDetta('Good morning, I would like to book an appointment', 'it'), null);
+
+  // Le vecchie impostazioni (solo tedesco, multilingua) valgono ancora.
+  assert.deepEqual([...lingueAttive({ tedesco: true })].sort(), ['de', 'it']);
+  assert.deepEqual([...lingueAttive({ multilingua: true })].sort(), ['de', 'en', 'es', 'fr', 'it']);
+
   // Lingua di default scelta dall'admin: il saluto parte in quella lingua.
-  salvaImpostazioni({ lingue: { predefinita: 'de' } });
+  salvaImpostazioni({ lingue: { attive: ['it', 'de'], predefinita: 'de' } });
   assert.deepEqual(salutoSegmenti().map((s) => s.lingua), ['de']);
   assert.match(salutoSegmenti()[0].testo, /Guten Tag/);
 
   // Multilingua: italiano, tedesco, inglese, spagnolo e francese.
-  salvaImpostazioni({ lingue: { tedesco: true, multilingua: true, predefinita: 'it' } });
+  salvaImpostazioni({ lingue: { attive: ['it', 'en', 'de', 'es', 'fr'], predefinita: 'it' } });
   assert.deepEqual([...lingueAttive()].sort(), ['de', 'en', 'es', 'fr', 'it']);
   assert.deepEqual(salutoSegmenti().map((s) => s.lingua), ['it']);
   salvaImpostazioni({ lingue: { predefinita: 'en' } });
@@ -49,13 +59,13 @@ try {
   assert.match(salutoSegmenti()[0].testo, /Buenos días/);
   salvaImpostazioni({ lingue: { predefinita: 'it' } });
   prompt = istruzioni();
-  assert.match(prompt, /Parli italiano, tedesco, inglese, spagnolo e francese/i);
+  assert.match(prompt, /Parli italiano, inglese, tedesco, spagnolo e francese/i);
   for (const lingua of ['In inglese:', 'In tedesco:', 'In spagnolo:', 'In francese:']) assert.ok(prompt.includes(lingua), lingua);
 
   // Una lingua predefinita non attiva non si usa: resta l'italiano.
-  salvaImpostazioni({ lingue: { tedesco: false, multilingua: false, predefinita: 'fr' } });
+  salvaImpostazioni({ lingue: { attive: ['it'], predefinita: 'fr' } });
   assert.equal(salutoSegmenti()[0].lingua, 'it');
-  salvaImpostazioni({ lingue: { tedesco: false, multilingua: true, predefinita: 'it' } });
+  salvaImpostazioni({ lingue: { attive: ['it', 'en', 'de', 'es', 'fr'], predefinita: 'it' } });
   assert.deepEqual([...lingueAttive()].sort(), ['de', 'en', 'es', 'fr', 'it']);
 
   // Riconoscimento della lingua frase per frase.
@@ -81,13 +91,13 @@ try {
   assert.equal(linguaDetta('Marco Rossi', 'en', attive), null);
 
   // Con il multilingua spento non si cambia lingua: resta quella scelta dall'admin.
-  salvaImpostazioni({ lingue: { multilingua: false, tedesco: false } });
+  salvaImpostazioni({ lingue: { attive: ['it'] } });
   assert.equal(linguaDetta('Good morning, I would like to book an appointment', 'it'), null);
-  salvaImpostazioni({ lingue: { multilingua: true } });
+  salvaImpostazioni({ lingue: { attive: ['it', 'en', 'de', 'es', 'fr'] } });
 
   // Le frasi dei clienti in inglese non sono più scartate come rumore, con il multilingua attivo.
   assert.equal(nonItaliano('yes, that is right'), false);
-  assert.equal(impostazioni().lingue.multilingua, true);
+  assert.deepEqual([...lingueAttive()].sort(), ['de', 'en', 'es', 'fr', 'it']);
 
   // Consenso e congedo funzionano anche nelle altre lingue.
   const riepilogoEn = 'Marco Rossi, Tuesday at nine, two wooden signs. Does that work for you?';

@@ -160,7 +160,7 @@ Tutto si modifica da `/admin` (o `/admin/<SEGRETO>`), e le modifiche valgono dal
 | **Appuntamenti** | Gli appuntamenti presi dal receptionist, con **Sposta** e **Annulla** (anche nei calendari collegati). "Da verificare" significa che chi chiama ha avuto un orario già occupato o fuori orario: guardalo tu. In cima stanno anche i **richiami promessi** ("un collega la richiamerà"): nome, telefono e motivo; quando li hai richiamati premi **Fatto**. |
 | **Attività** | Nome, indirizzo, telefono, email, servizi, cosa chiedere a chi prenota, la "scheda per il telefono" (tutto quello che il receptionist deve sapere). Qui c'è il riquadro **Importa dal sito**. |
 | **Design** | Logo, colore di accento e tema delle pagine per chiamare dal browser e del pannello "Fatti chiamare", con un'**anteprima** mentre li cambi. Vuoto = l'aspetto di partenza. Si riempiono da soli con **Importa dal sito** o col pulsante **Prendi logo e colore dal sito** (legge solo la home). |
-| **Receptionist** | Nome, genere (per l'italiano "pronto/pronta"), saluto, istruzioni in più, lingue (multilingua, tedesco). |
+| **Receptionist** | Nome, genere (per l'italiano "pronto/pronta"), saluto, istruzioni in più, lingue: quali capisce (una spunta per lingua) e in che lingua fa il saluto. |
 | **Orari** | Orari di apertura per giorno, chiusure straordinarie, durata dell'appuntamento, quanti in contemporanea, preavviso minimo, quanto avanti si prenota, quanti posti proporre e l'elenco dei prossimi posti liberi. |
 | **Calendari** | Account CalDAV, l'abbonamento, gli indirizzi iCal privati che bloccano gli orari. |
 | **Cervello** | Quale servizio risponde alle telefonate, una riserva facoltativa e il pulsante di prova. |
@@ -223,9 +223,11 @@ Come si comporta:
 ## Lingue
 
 - **L'italiano c'è sempre.** Il saluto, la voce e il prompt sono pensati per l'italiano, con un registro da "professionista milanese" (chiaro, diretto, senza dialetto).
-- **Tedesco, facoltativo.** Nella scheda **Receptionist** spunta "Solo tedesco". Il saluto diventa italiano seguito da tedesco, e il receptionist risponde **nella lingua di chi chiama**, anche cambiando dentro la stessa telefonata.
-- **Multilingua, facoltativo.** Nella scheda **Receptionist** spunta **Multilingua**: il receptionist capisce e risponde in **inglese, tedesco, spagnolo e francese** (oltre all'italiano), anche cambiando lingua dentro la stessa telefonata. Con **Lingua di default** scegli in che lingua parte la telefonata (saluto e prime frasi); appena il cliente parla una delle lingue attive, la telefonata continua in quella. Orari, date, numeri e email si dicono a voce e in lettere nella lingua della telefonata, mentre i dettagli dentro il marcatore di prenotazione restano sempre in italiano. Parakeet v3 riconosce 25 lingue europee, e alla voce si dice frase per frase in che lingua parlare.
-- Una lingua non prevista (per esempio olandese, portoghese o cinese): il receptionist dice con garbo, in italiano e in inglese, che parla solo le lingue attive e offre il richiamo di un collega.
+- **Le altre lingue le spunti tu.** Nella scheda **Receptionist**, sotto **Lingue che capisce**, spunta una per una le lingue che il receptionist deve capire: **inglese, tedesco, spagnolo, francese** (l'italiano è sempre acceso). Puoi accenderne una sola, due o tutte: non c'è più un interruttore "multilingua" che le accende in blocco.
+- **Il saluto è in una lingua sola.** Sotto, con **Lingua del saluto**, scegli in che lingua parte la telefonata (saluto e prime frasi). Non parla in tutte le lingue una dopo l'altra: parte in quella e basta. Se scegli una lingua che non hai spuntato, il pannello la spunta da solo quando salvi.
+- **Poi segue chi chiama.** Appena il cliente parla una delle lingue attive, la telefonata continua in quella, anche cambiando lingua più volte; se parla una lingua che non è tra quelle spuntate, resta nella lingua del saluto. Orari, date, numeri e email si dicono a voce e in lettere nella lingua della telefonata, mentre i dettagli dentro il marcatore di prenotazione restano sempre in italiano. Parakeet v3 riconosce 25 lingue europee, e alla voce si dice frase per frase in che lingua parlare.
+- **Le impostazioni di prima valgono ancora.** Chi aveva spuntato "Solo tedesco" o "Multilingua" nelle versioni precedenti ritrova le stesse lingue già accese: la conversione avviene da sola al primo avvio.
+- Una lingua non prevista (per esempio olandese, portoghese o cinese): il receptionist dice con garbo, in italiano (e in inglese se non è già la lingua del saluto), che parla solo le lingue attive e offre il richiamo di un collega.
 
 ## Calendari
 

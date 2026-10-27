@@ -33,7 +33,7 @@ Italian version: [README.it.md](README.it.md) · Technical guide (Italian): [GUI
 
 A receptionist that answers the phone for a small business. It greets the caller, works out what they need, offers free appointment slots, writes the appointment into your calendar and ends the call. Speech recognition and the voice run on your Mac; the "brain" that decides what to say is Claude Code by default, or any OpenAI-compatible service.
 
-**The calls are in Italian** (German is an optional extra, see [Languages](#languages)). The examples in this README are real Italian dialogue, with English translations next to them.
+**The calls are in Italian** (English, German, Spanish and French are an optional extra, see [Languages](#languages)). The examples in this README are real Italian dialogue, with English translations next to them.
 
 What it does:
 
@@ -160,7 +160,7 @@ Everything is edited at `/admin` (or `/admin/<SEGRETO>`), and changes apply from
 | **Appuntamenti** (Appointments) | Appointments taken by the receptionist, with **Move** and **Cancel** (also in linked calendars). "Da verificare" (to check) means the caller got a time that was already taken or outside opening hours: look at it yourself. At the top there are also the **promised callbacks** ("a colleague will call you back"): name, phone number and reason; once called back, press **Fatto**. |
 | **Attività** (Business) | Name, address, phone, email, services, what to ask a booking caller, the "phone sheet" (everything the receptionist should know). The **Import from website** box is here. |
 | **Design** | Logo, accent colour and theme of the browser call page and of the "Chiamami ora" panel, with a **live preview** as you change them. Empty = the default look. It fills itself in with **Importa dal sito** or with the **Prendi logo e colore dal sito** button (reads just the home page). |
-| **Receptionist** | Name, gender (for Italian "pronto/pronta"), greeting, extra instructions, German on/off. |
+| **Receptionist** | Name, gender (for Italian "pronto/pronta"), greeting, extra instructions, languages it understands (one tick each) and the greeting language. |
 | **Orari** (Hours) | Opening hours per day, one-off closures, appointment length, how many in parallel, minimum notice, how far ahead, how many slots to propose, and the list of upcoming free slots. |
 | **Calendari** (Calendars) | CalDAV accounts, the subscription feed, private iCal addresses that block hours. |
 | **Cervello** (Brain) | Which service answers calls, an optional fallback, and the test button. |
@@ -223,8 +223,11 @@ How it behaves:
 ## Languages
 
 - **Italian is always on.** The greeting, the voice and the prompt are built for Italian, with a "Milanese professional" register (clear, direct, no dialect).
-- **German, optional.** In the **Receptionist** tab, tick "Rispondi anche in tedesco". The greeting becomes Italian followed by German, and the receptionist answers **in the language of the caller**, even switching inside the same call. German is formal ("Sie"), numbers and dates are spelled out. The text inside the booking marker is always written in Italian. Parakeet v3 recognizes 25 European languages, and the voice is told per sentence which language to speak.
-- Any other language: the receptionist politely says (in Italian and German) that it only speaks those two and offers a call back from a colleague. English-looking transcriptions are discarded as noise, because the speech recognizer tends to hallucinate short English phrases from echo and silence, so **English callers are not served**.
+- **Other languages, one switch each.** In the **Receptionist** tab, under **Lingue che capisce**, tick the languages the receptionist should understand: **English, German, Spanish, French** (Italian is always on). One, two or all of them - there is no single "multilingual" switch any more.
+- **The greeting is in one language.** Under **Lingua del saluto** you pick the language the call starts in (greeting and first sentences). It does not greet in several languages one after another: it starts in that one. Picking a language you did not tick makes the panel tick it for you when you save.
+- **Then it follows the caller.** As soon as the caller speaks one of the active languages the call continues in that one, even switching several times; if the caller speaks a language that is not ticked, it stays in the greeting language. German is formal ("Sie"), Spanish uses "usted", French uses "vous"; numbers and dates are spelled out. The text inside the booking marker is always written in Italian. Parakeet v3 recognizes 25 European languages, and the voice is told per sentence which language to speak.
+- **Old settings still apply.** Anyone who had ticked "Solo tedesco" or "Multilingua" in a previous version keeps the same languages: they are converted to the per-language list on first start.
+- Any other language: the receptionist politely says (in Italian, and in English unless that is already the greeting language) that it only speaks the active languages and offers a call back from a colleague.
 
 German is still being tested, see [Status and limitations](#status-and-limitations).
 

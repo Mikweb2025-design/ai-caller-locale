@@ -69,13 +69,12 @@ export const PREDEFINITE = {
     principale: { servizio: 'claude', url: '', chiave: '', modello: process.env.CLAUDE_MODELLO || 'haiku', impegno: process.env.CLAUDE_IMPEGNO || 'low' },
     riserva: { servizio: '', url: '', chiave: '', modello: '', impegno: '' },
   },
-  // lingue: l'italiano c'è sempre; con "tedesco" risponde in italiano o tedesco, con "multilingua"
-  // risponde anche in inglese, spagnolo e francese (tedesco compreso), nella lingua di chi chiama
+  // lingue: l'italiano c'è sempre; in "attive" stanno le altre lingue che il receptionist capisce
+  // (le spunta una per una dal pannello) e "predefinita" è quella con cui parte la telefonata
   lingue: {
-    tedesco: false,
-    salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?',
-    multilingua: false,
+    attive: ['it'],
     predefinita: 'it',
+    salutoTedesco: 'Guten Tag, hier ist {nome}. Wie kann ich Ihnen helfen?',
     salutoInglese: 'Good morning, this is {nome}. How can I help you?',
     salutoSpagnolo: 'Buenos días, soy {nome}. ¿En qué puedo ayudarle?',
     salutoFrancese: 'Bonjour, ici {nome}. Comment puis-je vous aider ?',
@@ -129,11 +128,19 @@ const CHIAVI_PERICOLOSE = new Set(['__proto__', 'prototype', 'constructor']);
 // Le lingue in cui il receptionist sa rispondere, oltre all'italiano che c'è sempre.
 export const LINGUE_MULTILINGUA = ['de', 'en', 'es', 'fr'];
 export const NOMI_LINGUA = { it: 'italiano', de: 'tedesco', en: 'inglese', es: 'spagnolo', fr: 'francese' };
+const ORDINE_LINGUE = ['it', 'en', 'de', 'es', 'fr'];
 export function lingueAttive(lingue = impostazioni().lingue) {
-  const attive = new Set(['it']);
-  if (lingue?.tedesco) attive.add('de');
-  if (lingue?.multilingua) for (const l of LINGUE_MULTILINGUA) attive.add(l);
-  return attive;
+  const scelte = new Set(['it']);
+  if (Array.isArray(lingue?.attive)) {
+    // i pulsanti per lingua del pannello scrivono qui: è l'elenco che conta
+    for (const l of lingue.attive) if (l !== 'it' && NOMI_LINGUA[l]) scelte.add(l);
+  } else {
+    // impostazioni vecchie, senza l'elenco: valgono le due opzioni di prima
+    if (lingue?.tedesco) scelte.add('de');
+    if (lingue?.multilingua) for (const l of LINGUE_MULTILINGUA) scelte.add(l);
+  }
+  // sempre nello stesso ordine, così le istruzioni non cambiano a seconda di come sono state spuntate
+  return new Set(ORDINE_LINGUE.filter((l) => scelte.has(l)));
 }
 
 // La lingua con cui parte la telefonata (saluto e prime frasi). Se non è tra quelle attive,
@@ -164,12 +171,28 @@ export function unisciSicuro(base, sopra) {
   return out;
 }
 
+// Le vecchie impostazioni avevano due spunte ("solo tedesco", "multilingua"): qui diventano
+// l'elenco delle lingue attive, una volta sola, prima di unire i valori salvati ai predefiniti.
+// Così chi aveva il multilingua acceso se lo ritrova senza doverlo rispuntare.
+function migraLingue(salvate) {
+  const lingue = salvate?.lingue;
+  if (!lingue || typeof lingue !== 'object' || Array.isArray(lingue)) return;
+  if (!Array.isArray(lingue.attive)) {
+    const attive = ['it'];
+    if (lingue.multilingua) attive.push(...LINGUE_MULTILINGUA); else if (lingue.tedesco) attive.push('de');
+    lingue.attive = [...new Set(attive)];
+  }
+  delete lingue.tedesco;
+  delete lingue.multilingua;
+}
+
 let cache = null;
 export function impostazioni() {
   if (!cache) {
     let salvate = {};
     if (existsSync(FILE)) { try { salvate = JSON.parse(readFileSync(FILE, 'utf8')); } catch (e) { console.error('impostazioni.json illeggibile:', e.message); } }
     if (salvate.receptionist && typeof salvate.receptionist === 'object') delete salvate.receptionist.personaggio; // campo tolto: nelle impostazioni vecchie si ignora
+    migraLingue(salvate);
     cache = unisciSicuro(PREDEFINITE, salvate);
     cache.gestioneRichieste = normalizzaGestioneRichieste(cache.gestioneRichieste);
   }
@@ -202,6 +225,12 @@ export function salvaImpostazioni(nuove) {
   const tutte = unisciSicuro(PREDEFINITE, unisciSicuro(attuali, nuove));
   if (Array.isArray(nuove?.calendari)) tutte.calendari = nuove.calendari; // l'elenco arriva sempre intero
   for (const g of GIORNI) tutte.orari[g] = String(tutte.orari[g] || '').trim();
+  // lingue: l'italiano c'è sempre, le altre devono essere lingue che sappiamo parlare
+  const attive = Array.isArray(tutte.lingue?.attive) ? tutte.lingue.attive : [];
+  tutte.lingue.attive = [...new Set(['it', ...attive.filter((l) => l !== 'it' && NOMI_LINGUA[l])])];
+  delete tutte.lingue.tedesco;
+  delete tutte.lingue.multilingua;
+  if (!tutte.lingue.attive.includes(tutte.lingue.predefinita)) tutte.lingue.predefinita = 'it';
   if (tutte.design) {
     tutte.design.logo = String(tutte.design.logo || '').trim();
     tutte.design.colore = String(tutte.design.colore || '').trim();
