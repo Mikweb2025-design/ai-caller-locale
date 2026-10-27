@@ -6,12 +6,12 @@
 #   GET  /salute
 #
 # Uso: python3 motore/motore.py   (le impostazioni arrivano dal .env del progetto)
-import itertools, json, math, os, queue, re, subprocess, sys, threading, time, wave
+import itertools, json, math, os, queue, random, re, subprocess, sys, threading, time, wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
-from scipy.signal import resample_poly
+from scipy.signal import butter, resample_poly, sosfilt, sosfilt_zi
 
 RADICE = Path(__file__).resolve().parent.parent
 env = RADICE / '.env'
@@ -35,7 +35,7 @@ TTS_TEMPERATURA = float(os.environ.get('TTS_TEMPERATURA') or 0.72)  # più bassa
 TTS_TOP_P = float(os.environ.get('TTS_TOP_P') or 0.93)  # varietà sufficiente per una cadenza meno meccanica
 TTS_TOP_K = int(os.environ.get('TTS_TOP_K') or 40)
 TTS_RIPETIZIONE = float(os.environ.get('TTS_RIPETIZIONE') or 1.08)
-TTS_SEME = int(os.environ.get('TTS_SEME') or 18)  # stessa voce e cadenza anche dopo un riavvio
+TTS_SEME = int(os.environ.get('TTS_SEME') or 0)  # 0 = seme nuovo a ogni frase: la cadenza non si ripete identica
 TTS_VOCE = os.environ.get('TTS_VOCE', 'ryan')
 TTS_ISTRUZIONI = os.environ.get('TTS_ISTRUZIONI', '') or None
 # clonazione da un campione (solo con i modelli "Base"): file wav a 24 kHz e la sua trascrizione
@@ -193,7 +193,7 @@ def riaccendi_servizi_concorrenti(esegui=subprocess.run, tentativi=TENTATIVI_BOO
 
 
 def sorveglia_servizi_concorrenti(stop=None):
-    """Ricontrolla launchd: altri watchdog non devono riaccendere Qwen mentre Maria è attiva."""
+    """Ricontrolla launchd: altri watchdog non devono riaccendere Qwen mentre un'altra voce è attiva."""
     if not SERVIZI_CONCORRENTI or CONTROLLO_SERVIZI_SECONDI <= 0:
         return
     stop = stop or threading.Event()
@@ -316,6 +316,35 @@ def a_8k(audio):
     return (np.clip(a, -1, 1) * 32767).astype('<i2').tobytes()
 
 
+class Convertitore8k:
+    """24000 → 8000 in streaming, senza salti.
+
+    Il motore manda la voce a pezzi da ~0,25 s. Ricampionare ogni pezzo per conto suo
+    (resample_poly dentro a_8k) azzera il filtro a ogni confine: quattro salti al secondo,
+    ed è esattamente quello che fa sembrare la voce metallica a tratti. Qui il filtro ha
+    memoria e la decimazione ha una fase fissa, quindi il risultato è identico a
+    ricampionare tutta la frase in un colpo solo."""
+
+    def __init__(self, sr):
+        self.fattore = sr // 8000 if sr % 8000 == 0 else 0
+        self.fase = 0
+        self.stato = None
+        self.sos = butter(6, 3500, btype='low', fs=sr, output='sos') if self.fattore else None
+
+    def pezzo(self, audio):
+        a = np.asarray(audio, dtype=np.float32).reshape(-1)
+        if not self.fattore:
+            return a_8k(a)
+        if not len(a):
+            return b''
+        if self.stato is None:
+            self.stato = sosfilt_zi(self.sos).astype(np.float32) * a[0]
+        y, self.stato = sosfilt(self.sos, a, zi=self.stato)
+        inizio = (-self.fase) % self.fattore
+        self.fase = (self.fase + len(a)) % self.fattore
+        return (np.clip(y[inizio::self.fattore], -1, 1) * 32767).astype('<i2').tobytes()
+
+
 LINGUE = {'it': 'italian', 'de': 'german', 'en': 'english', 'es': 'spanish', 'fr': 'french'}  # lingua della frase → lingua di Qwen3-TTS
 
 
@@ -342,7 +371,9 @@ def parla(testo, nome_voce=None, lingua='italian', rif=None, seme=None):
     passo = SR_TTS // 20  # 50 ms
     detto = silenzio = 0.0
     import mlx.core as mx
-    mx.random.seed(int(TTS_SEME if seme is None else seme) & 0xffffffff)
+    convertitore = Convertitore8k(SR_TTS)
+    seme_frase = TTS_SEME if seme is None else int(seme)
+    mx.random.seed((seme_frase or random.randrange(1, 2**31)) & 0xffffffff)
     for r in voce.generate(**kw):
         a = np.asarray(r.audio, dtype=np.float32)
         for i in range(0, len(a), passo):
@@ -350,9 +381,9 @@ def parla(testo, nome_voce=None, lingua='italian', rif=None, seme=None):
             silenzio = silenzio + 0.05 if np.sqrt(np.mean(pezzo ** 2)) < 0.01 else 0.0
             detto += 0.05
             if detto > 0.9 * atteso and silenzio >= 0.5:
-                yield a_8k(a[:i + len(pezzo)])
+                yield convertitore.pezzo(a[:i + len(pezzo)])
                 return
-        yield a_8k(a)
+        yield convertitore.pezzo(a)
 
 
 def parla_riscaldamento_tts(testo):
@@ -550,9 +581,13 @@ class Gestore(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/salute':
             vivo = stt_vivo()
+            # la voce davvero in uso è quella scelta nel pannello, non il campione di partenza
+            attiva = riferimento_voce_attiva()
+            predefinita = TTS_RIF_AUDIO or TTS_VOCE
+            voce = Path(attiva[0]).name if attiva else (Path(predefinita).name if TTS_RIF_AUDIO else predefinita)
             self._json(200 if vivo else 503, {
                 'ok': vivo, 'stt_vivo': vivo, 'stt': STT_MODELLO,
-                'tts': TTS_MODELLO, 'voce': TTS_RIF_AUDIO or TTS_VOCE,
+                'tts': TTS_MODELLO, 'voce': voce,
             })
             if not vivo:
                 gestisci_errore_stt(STTNonDisponibile('processo STT terminato'))

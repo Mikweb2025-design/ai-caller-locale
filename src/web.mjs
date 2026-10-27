@@ -3,7 +3,7 @@
 // In più riceve la trascrizione e si può scrivere al receptionist come in una chat.
 import { impostazioni } from './impostazioni.mjs';
 import { temaCss, tagLogo } from './design.mjs';
-import { codiceCatturaBrowser } from './audio-browser.mjs';
+import { codiceCatturaBrowser, codiceProgrammazioneAudio, codiceRicampionamentoAudio } from './audio-browser.mjs';
 
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
@@ -148,8 +148,12 @@ export function paginaWeb({ ws, admin, avatar }) {
 const WS_PATH = ${JSON.stringify(ws)};
 const $ = (id) => document.getElementById(id);
 let ws, ctx, sorgente, nodo, monitor, filtroVoce, flusso, prossimo = 0, attivi = [], marche = [], muto = false;
+// stato del ricampionamento 8 kHz → rate del dispositivo, continuo fra un pacchetto e l'altro
+const ricampionamento = { resto: 0, ultimo: null };
 const streamSid = 'MZweb' + Math.random().toString(16).slice(2);
 const ios = /iP(?:hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+${codiceProgrammazioneAudio()}
+${codiceRicampionamentoAudio()}
 
 // μ-law G.711
 const DEC = new Float32Array(256);
@@ -170,22 +174,27 @@ const stato = (s) => { $('stato').textContent = s; };
 const invia = (o) => ws?.readyState === 1 && ws.send(JSON.stringify(o));
 
 function suona(payload) {
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   const raw = atob(payload), n = raw.length;
   // μ-law → float 8 kHz e poi alzo io alla campionatura reale del contesto (iOS Safari
   // ignora sampleRate:8000 e il suo ricampionatore interno a rate così bassi crea crepe e sibili).
-  const su = ctx.sampleRate, passo = 8000 / su, nSu = Math.max(1, Math.round(n / passo));
-  const buf = ctx.createBuffer(1, nSu, su), d = buf.getChannelData(0);
-  for (let i = 0; i < nSu; i++) {
-    const x = i * passo, j = x | 0, fr = x - j;
-    const a = DEC[raw.charCodeAt(j)] ?? 0, b = j + 1 < n ? DEC[raw.charCodeAt(j + 1)] : a;
-    d[i] = a + (b - a) * fr;
-  }
+  // La posizione frazionaria continua da un pacchetto all'altro: ricampionare ogni 20 ms
+  // partendo da zero sposta la fase a ogni confine e diventa un ronzio metallico a tratti.
+  const su = ctx.sampleRate;
+  const valori = new Float32Array(n);
+  for (let i = 0; i < n; i++) valori[i] = DEC[raw.charCodeAt(i)] ?? 0;
+  const pezzi = ricampionaPacchetto(valori, ricampionamento, su);
+  if (!pezzi.length) return;
+  const buf = ctx.createBuffer(1, pezzi.length, su), d = buf.getChannelData(0);
+  d.set(pezzi);
   const s = ctx.createBufferSource();
   s.buffer = buf; s.connect(filtroVoce);
-  // Safari mobile ha più jitter: accumula un piccolo margine solo quando la coda è vuota.
-  if (prossimo < ctx.currentTime + 0.01) prossimo = ctx.currentTime + (ios ? 0.09 : 0.05);
-  s.start(prossimo);
-  prossimo += buf.duration;
+  // Mai nel passato: se la coda è vuota (o scaduta) si riparte con un margine vero.
+  // Safari mobile ha più jitter, quindi il margine è più largo.
+  const quando = inizioBuffer(prossimo, ctx.currentTime, ios);
+  s.start(quando);
+  prossimo = quando + buf.duration;
   attivi.push(s);
   s.onended = () => { attivi = attivi.filter((x) => x !== s); };
   stato('parla il receptionist');
@@ -206,12 +215,24 @@ function svuota() {
   stato('in ascolto');
 }
 
+// Un buffer muto appena creato il contesto fa partire davvero l'uscita audio (iOS,
+// Bluetooth, pagina appena aperta): senza, i primi 100-200 ms della voce si perdono.
+function scaldaAudio() {
+  try {
+    const s = ctx.createBufferSource();
+    s.buffer = ctx.createBuffer(1, Math.max(128, Math.round(ctx.sampleRate * 0.05)), ctx.sampleRate);
+    s.connect(ctx.destination);
+    s.start();
+  } catch {}
+}
+
 async function chiama() {
   $('chiama').disabled = true;
   stato('collegamento…');
   // iOS ignora sampleRate:8000; si usa il rate nativo e il worklet ricampiona a 8 kHz.
   ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
   if (ctx.state === 'suspended') { try { await ctx.resume(); } catch {} }
+  scaldaAudio();
   // L'audio arriva a 8 kHz e qui viene alzato al rate del dispositivo con interpolazione
   // lineare: sopra i 4 kHz restano "immagini" che fanno sibilare la voce. Due passa-basso
   // in cascata (Linkwitz-Riley a 3,4 kHz) le tolgono prima delle casse.

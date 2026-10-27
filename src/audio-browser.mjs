@@ -3,6 +3,48 @@
 // sempre frame telefonici da 160 campioni (20 ms).
 export const FREQUENZA_MICROFONO_SERVER = 8000;
 export const CAMPIONI_PER_FRAME = 160;
+// Quanto audio già programmato deve esserci davanti alla voce quando la coda è vuota:
+// un inizio nel passato fa perdere la testa del buffer (la prima sillaba del saluto).
+export const MARGINE_AVVIO_SECONDI = 0.15;
+export const MARGINE_AVVIO_IOS_SECONDI = 0.25;
+export const MARGINE_MINIMO_SECONDI = 0.02;
+
+// Programmatore dell'uscita audio della pagina: vive nel browser, ma la regola sta qui
+// perché si possa provare senza orecchie (prove/prova-avvio-browser.mjs).
+export function codiceProgrammazioneAudio() {
+  return `const MARGINE_AVVIO = ${MARGINE_AVVIO_SECONDI};
+const MARGINE_AVVIO_IOS = ${MARGINE_AVVIO_IOS_SECONDI};
+const MARGINE_MINIMO = ${MARGINE_MINIMO_SECONDI};
+// Quando parte un buffer: la coda continua senza buchi, ma se è vuota (inizio chiamata,
+// dopo un'interruzione, contesto audio appena svegliato) si riparte con un margine vero.
+// Programmare nel passato è quello che ogni tanto mangiava la prima sillaba.
+function inizioBuffer(prossimo, adesso, ios) {
+  if (prossimo > adesso + MARGINE_MINIMO) return prossimo;
+  return adesso + (ios ? MARGINE_AVVIO_IOS : MARGINE_AVVIO);
+}`;
+}
+
+// Ricampionamento di andata della voce (8 kHz → rate del dispositivo). La posizione
+// frazionaria continua da un pacchetto all'altro: ripartire da zero a ogni 20 ms sposta la
+// fase a ogni confine e si sente come un ronzio metallico che va e viene. Vive nel browser,
+// ma la regola sta qui perché si possa provare senza orecchie (prove/prova-avvio-browser.mjs).
+export function codiceRicampionamentoAudio() {
+  return `function ricampionaPacchetto(valori, stato, su) {
+  const n = valori.length, passo = 8000 / su;
+  const campione = (i) => i < 0 ? (stato.ultimo ?? valori[0]) : (i < n ? valori[i] : valori[n - 1]);
+  const pezzi = [];
+  let x = stato.resto;
+  while (x < n - 1) {
+    const j = Math.floor(x), fr = x - j;
+    const a = campione(j), b = campione(j + 1);
+    pezzi.push(a + (b - a) * fr);
+    x += passo;
+  }
+  stato.resto = x - n;          // dove riprende il prossimo pacchetto (tra -1 e 0)
+  stato.ultimo = valori[n - 1];
+  return pezzi;
+}`;
+}
 
 export function codiceCatturaBrowser() {
   return `class Cattura extends AudioWorkletProcessor {

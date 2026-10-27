@@ -8,7 +8,7 @@ import { confermaAppuntamento, registraRichiamo, attaccaTelefonoRichiamo } from 
 import { Cervello } from './cervello.mjs';
 import { consensoPrenotazione, consensoRichiamo, congedoCliente } from './consenso.mjs';
 import { numeriInParole, punteggiaturaDaVoce } from './parlato.mjs';
-import { creaRegolatoreIntercalari } from './intercalari.mjs';
+import { creaRegolatoreIntercalari, scegliVariante } from './intercalari.mjs';
 import { impostazioni, lingueAttive, linguaPredefinita } from './impostazioni.mjs';
 import { estraiIntento, regoleCandidate } from './intenti.mjs';
 import { daMulaw, trascrivi, pronuncia, frasePronta, fraseSubito, fraseInDiretta, creaCatenaVoce } from './voce.mjs';
@@ -18,48 +18,161 @@ const FRAME_MS = 20;
 // Al telefono i primi istanti della chiamata si perdono: un breve silenzio in testa al
 // saluto fa perdere quello, non la prima parola ("Lasercamp" che diventava "camp").
 const SILENZIO_AVVIO_MS = 1200;
+// Nel browser l'uscita audio parte con la pagina e può mangiarsi i primi 100-200 ms:
+// basta un silenzio più corto, ma nello stesso pacchetto del saluto.
+const SILENZIO_AVVIO_WEB_MS = 300;
 const silenzioAvvio = () => Buffer.alloc(SILENZIO_AVVIO_MS * 8, 0xff);
+const silenzioAvvioWeb = () => Buffer.alloc(SILENZIO_AVVIO_WEB_MS * 8, 0xff);
 // Ogni risposta al telefono riparte col playout da zero (spesso subito dopo un clear del
 // rumore d'attesa): un silenzio in testa alla prima frase protegge la prima sillaba.
 const SILENZIO_TURNO_MS = 200;
 const silenzioTurno = () => Buffer.alloc(SILENZIO_TURNO_MS * 8, 0xff);
 export const RIEMPITIVO = 'Sì, un attimo.';
-export const RIEMPITIVI = { it: RIEMPITIVO, de: 'Ja, einen Moment.', en: 'One moment, please.', es: 'Sí, un momento.', fr: 'Oui, un instant.' };
+// Riempitivi alternati: quando il modello ci mette un secondo, la stessa frase identica a
+// ogni chiamata si nota subito. Sono tutte già sintetizzate all'avvio.
+export const RIEMPITIVI = {
+  it: [RIEMPITIVO, 'Sì, un secondo.', 'Un attimo, sì.', 'Sì sì, guardi.'],
+  de: ['Ja, einen Moment.', 'Einen Augenblick bitte.', 'Ja, gleich.'],
+  en: ['One moment, please.', 'Just a second.', 'Yes, one moment.'],
+  es: ['Sí, un momento.', 'Un segundo, por favor.'],
+  fr: ['Oui, un instant.', 'Un petit instant, s\'il vous plaît.'],
+};
 
 // Le frasi fisse che il sistema dice da solo (riepilogo, richiamo, ripetere) nella lingua
-// della telefonata: il modello tace o sbaglia, queste restano sempre corrette.
+// della telefonata: il modello tace o sbaglia, queste restano sempre corrette. Ogni voce è
+// una lista di varianti: si pesca a caso evitando l'ultima usata, così due chiamate di
+// fila non dicono le stesse parole con la stessa cadenza.
 const FRASI = {
+  it: {
+    riepilogo: [
+      (nome, parti, motivo) => numeriInParole(`Allora: ${nome ? `${nome}, ` : ''}${parti}${motivo ? `, per ${motivo}` : ''}. Le torna tutto?`),
+      (nome, parti, motivo) => numeriInParole(`Ricapitolo: ${[nome, parti, motivo].filter(Boolean).join(', ')}. È giusto così?`),
+      (nome, parti, motivo) => numeriInParole(`Mi confermi: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Ho capito bene?`),
+    ],
+    richiamoSenzaNumero: [
+      'Certo, la faccio richiamare da un collega. A che numero la possiamo richiamare?',
+      'Volentieri, gliela faccio richiamare. Su che numero la cercano?',
+    ],
+    richiamo: [
+      'Certo, la faccio richiamare da un collega.',
+      'Va bene, chiedo a un collega di richiamarla.',
+    ],
+    richiamoFatto: [
+      'Perfetto, ho segnato il richiamo. Le serve altro?',
+      'Fatto, un collega la richiama. Posso aiutarla in qualcos\'altro?',
+    ],
+    ripeti: [
+      'Mi scusi, può ripetere?',
+      'Non ho capito bene, me lo ripete?',
+    ],
+    email: [
+      'Le mando la conferma per email, quale indirizzo?',
+      'Su che email le mando la conferma?',
+    ],
+  },
   de: {
-    riepilogo: (nome, parti, motivo) => `Also: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Passt das so für Sie?`,
-    richiamoSenzaNumero: 'Gerne, ich lasse Sie zurückrufen. Unter welcher Nummer?',
-    richiamo: 'Gerne, ich lasse Sie von einem Kollegen zurückrufen.',
-    richiamoFatto: 'Gerne, ein Kollege ruft Sie zurück. Kann ich sonst noch helfen?',
-    ripeti: 'Entschuldigung, können Sie das wiederholen?',
-    email: 'Ich schicke Ihnen die Bestätigung per E-Mail. Wie lautet Ihre E-Mail-Adresse?',
+    riepilogo: [
+      (nome, parti, motivo) => `Also: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Passt das so für Sie?`,
+      (nome, parti, motivo) => `Kurz zusammengefasst: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Habe ich das richtig verstanden?`,
+    ],
+    richiamoSenzaNumero: [
+      'Gerne, ich lasse Sie zurückrufen. Unter welcher Nummer?',
+      'Natürlich, ein Kollege ruft Sie zurück. Unter welcher Nummer erreicht er Sie?',
+    ],
+    richiamo: [
+      'Gerne, ich lasse Sie von einem Kollegen zurückrufen.',
+      'In Ordnung, ich bitte einen Kollegen um einen Rückruf.',
+    ],
+    richiamoFatto: [
+      'Gerne, ein Kollege ruft Sie zurück. Kann ich sonst noch helfen?',
+      'Notiert, ein Kollege meldet sich bei Ihnen. Darf es sonst noch etwas sein?',
+    ],
+    ripeti: [
+      'Entschuldigung, können Sie das wiederholen?',
+      'Das habe ich nicht ganz verstanden, wiederholen Sie es bitte?',
+    ],
+    email: [
+      'Ich schicke Ihnen die Bestätigung per E-Mail. Wie lautet Ihre E-Mail-Adresse?',
+      'An welche E-Mail-Adresse darf ich die Bestätigung schicken?',
+    ],
   },
   en: {
-    riepilogo: (nome, parti, motivo) => `So: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Does that work for you?`,
-    richiamoSenzaNumero: 'Of course, I can have a colleague call you back. What number should we use?',
-    richiamo: 'Of course, I will have a colleague call you back.',
-    richiamoFatto: 'Perfect, I have noted the callback. Is there anything else?',
-    ripeti: 'Sorry, could you repeat that?',
-    email: 'I will send you the confirmation by email. What is your email address?',
+    riepilogo: [
+      (nome, parti, motivo) => `So: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Does that work for you?`,
+      (nome, parti, motivo) => `Just to recap: ${[nome, parti, motivo].filter(Boolean).join(', ')}. Have I got that right?`,
+    ],
+    richiamoSenzaNumero: [
+      'Of course, I can have a colleague call you back. What number should we use?',
+      'Certainly, a colleague will call you back. Which number is best?',
+    ],
+    richiamo: [
+      'Of course, I will have a colleague call you back.',
+      'Sure, I will ask a colleague to call you back.',
+    ],
+    richiamoFatto: [
+      'Perfect, I have noted the callback. Is there anything else?',
+      'Done, a colleague will call you back. Anything else I can do?',
+    ],
+    ripeti: [
+      'Sorry, could you repeat that?',
+      'I did not quite catch that, could you say it again?',
+    ],
+    email: [
+      'I will send you the confirmation by email. What is your email address?',
+      'Which email address should I send the confirmation to?',
+    ],
   },
   es: {
-    riepilogo: (nome, parti, motivo) => `Entonces: ${[nome, parti, motivo].filter(Boolean).join(', ')}. ¿Le viene bien?`,
-    richiamoSenzaNumero: 'Claro, puedo pedir a un compañero que le llame. ¿A qué número le llamamos?',
-    richiamo: 'Claro, pediré a un compañero que le llame.',
-    richiamoFatto: 'Perfecto, he anotado el aviso. ¿Necesita algo más?',
-    ripeti: 'Perdone, ¿puede repetirlo?',
-    email: 'Le envío la confirmación por correo electrónico. ¿Cuál es su dirección de correo?',
+    riepilogo: [
+      (nome, parti, motivo) => `Entonces: ${[nome, parti, motivo].filter(Boolean).join(', ')}. ¿Le viene bien?`,
+      (nome, parti, motivo) => `Resumiendo: ${[nome, parti, motivo].filter(Boolean).join(', ')}. ¿Lo he entendido bien?`,
+    ],
+    richiamoSenzaNumero: [
+      'Claro, puedo pedir a un compañero que le llame. ¿A qué número le llamamos?',
+      'Por supuesto, un compañero le llamará. ¿En qué número le localiza?',
+    ],
+    richiamo: [
+      'Claro, pediré a un compañero que le llame.',
+      'De acuerdo, le pido a un compañero que le llame.',
+    ],
+    richiamoFatto: [
+      'Perfecto, he anotado el aviso. ¿Necesita algo más?',
+      'Hecho, un compañero le llamará. ¿Puedo ayudarle en algo más?',
+    ],
+    ripeti: [
+      'Perdone, ¿puede repetirlo?',
+      'No lo he entendido bien, ¿me lo repite?',
+    ],
+    email: [
+      'Le envío la confirmación por correo electrónico. ¿Cuál es su dirección de correo?',
+      '¿A qué correo le mando la confirmación?',
+    ],
   },
   fr: {
-    riepilogo: (nome, parti, motivo) => `Donc : ${[nome, parti, motivo].filter(Boolean).join(', ')}. Ça vous convient ?`,
-    richiamoSenzaNumero: 'Bien sûr, je peux demander à un collègue de vous rappeler. À quel numéro ?',
-    richiamo: 'Bien sûr, je demande à un collègue de vous rappeler.',
-    richiamoFatto: 'Parfait, j’ai noté le rappel. Autre chose ?',
-    ripeti: 'Pardon, pouvez-vous répéter ?',
-    email: 'Je vous envoie la confirmation par e-mail. Quelle est votre adresse e-mail ?',
+    riepilogo: [
+      (nome, parti, motivo) => `Donc : ${[nome, parti, motivo].filter(Boolean).join(', ')}. Ça vous convient ?`,
+      (nome, parti, motivo) => `Pour résumer : ${[nome, parti, motivo].filter(Boolean).join(', ')}. J'ai bien compris ?`,
+    ],
+    richiamoSenzaNumero: [
+      'Bien sûr, je peux demander à un collègue de vous rappeler. À quel numéro ?',
+      'Volontiers, un collègue vous rappellera. Sur quel numéro ?',
+    ],
+    richiamo: [
+      'Bien sûr, je demande à un collègue de vous rappeler.',
+      'D\'accord, je demande à un collègue de vous rappeler.',
+    ],
+    richiamoFatto: [
+      'Parfait, j’ai noté le rappel. Autre chose ?',
+      'C’est noté, un collègue vous rappellera. Puis-je vous aider pour autre chose ?',
+    ],
+    ripeti: [
+      'Pardon, pouvez-vous répéter ?',
+      'Je n\'ai pas bien compris, vous pouvez répéter ?',
+    ],
+    email: [
+      'Je vous envoie la confirmation par e-mail. Quelle est votre adresse e-mail ?',
+      'À quelle adresse e-mail puis-je envoyer la confirmation ?',
+    ],
   },
 };
 
@@ -263,6 +376,13 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   const statoIntento = { intento: 'altro', fonte: 'fallback', candidati: [], visti: [] };
   const gestioneRichieste = impostazioni().gestioneRichieste;
   const regolaIntercalare = creaRegolatoreIntercalari(impostazioni().receptionist?.intercalare);
+  // Varianti delle frasi fisse: dentro la stessa telefonata non si ripete due volte la stessa.
+  const ultimaVariante = new Map();
+  const varia = (chiave, varianti) => {
+    const scelta = scegliVariante(varianti, ultimaVariante.get(chiave) ?? null);
+    ultimaVariante.set(chiave, scelta);
+    return scelta;
+  };
   const ritardi = [];
   const tastiera = creaTastiera({
     // impostazioni del pannello (scheda Suoni) lette a ogni avvio: vale subito, anche a chiamata in corso.
@@ -273,7 +393,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     // Audio raw: niente mark e niente inviaAudio(), quindi non altera latenza o stato parlante.
     invia: (mulaw) => chiamata.inviaAudio(mulaw.toString('base64')),
   });
-  // sottofondo d'ufficio da mescolare sotto la voce di Maria (pannello: scheda Suoni);
+  // sottofondo d'ufficio da mescolare sotto la voce del receptionist (pannello: scheda Suoni);
   // la voce resta identica nei tempi: il mix è solo aritmetica sui pacchetti in uscita.
   const ambientale = creaSottofondo({
     attivo: () => Boolean(impostazioni().suoni?.attiva ?? CONFIG.tastiera.attiva),
@@ -282,7 +402,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
   });
 
   // Rumori di stanza subito dopo la voce (pannello: "suoni dopo la voce"): il segno che
-  // l'ufficio continua anche quando Maria tace. Audio raw senza mark: non conta come voce.
+  // l'ufficio continua anche quando il receptionist tace. Audio raw senza mark: non conta come voce.
   let timerCoda = null;
   let ultimoAudioVoce = 0;
   const vuoleCoda = () => Boolean(impostazioni().suoni?.attiva ?? CONFIG.tastiera.attiva)
@@ -459,7 +579,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     if (conTastiera) tastiera.avvia();
     if (CONFIG.riempitivoSecondi >= 0) {
       riempitivo = setTimeout(async () => {
-        const audio = await fraseInCache(RIEMPITIVI[linguaVoce] || RIEMPITIVO).catch(() => null);
+        const audio = await fraseInCache(varia('riempitivo', RIEMPITIVI[linguaVoce] || RIEMPITIVO)).catch(() => null);
         if (audio && primoAudio) { chiamata.log('🫧 riempitivo'); inviaAudio(audio, true); primoAudio = true; }
       }, CONFIG.riempitivoSecondi * 1000);
     }
@@ -516,7 +636,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     const parti = [quando, ora ? `alle ${ora}` : ''].filter(Boolean).join(' ');
     const motivo = String(dettagli || '').replace(/\s+/g, ' ').slice(0, 110).trim();
     const f = FRASI[linguaVoce];
-    if (f) return f.riepilogo(nome, parti, motivo);
+    if (f) return varia('riepilogo', f.riepilogo)(nome, parti, motivo);
     return numeriInParole(`Allora: ${nome ? `${nome}, ` : ''}${parti}${motivo ? `, per ${motivo}` : ''}. Le torna tutto?`);
   }
 
@@ -579,13 +699,13 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     const f = FRASI[linguaVoce];
     if (richiamoInAttesa) {
       if (!richiamoInAttesa.telefono && !numeroNoto(chiamata.chiamante)) {
-        return f ? f.richiamoSenzaNumero : 'Certo, la faccio richiamare da un collega. A che numero la possiamo richiamare?';
+        return varia('richiamoSenzaNumero', f?.richiamoSenzaNumero || 'Certo, la faccio richiamare da un collega. A che numero la possiamo richiamare?');
       }
-      return f ? f.richiamo : 'Certo, la faccio richiamare da un collega.';
+      return varia('richiamo', f?.richiamo || 'Certo, la faccio richiamare da un collega.');
     }
-    if (richiamoAppenaSalvato) return f ? f.richiamoFatto : 'Perfetto, ho segnato il richiamo. Le serve altro?';
+    if (richiamoAppenaSalvato) return varia('richiamoFatto', f?.richiamoFatto || 'Perfetto, ho segnato il richiamo. Le serve altro?');
     if (confermaInAttesa) return riepilogoConferma();
-    return f ? f.ripeti : 'Mi scusi, può ripetere?';
+    return varia('ripeti', f?.ripeti || 'Mi scusi, può ripetere?');
   }
 
   function collegaCervello() {
@@ -627,7 +747,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
         bufferTesto = '';
         emailChiesta = true;
         attendeRispostaEmail = true;
-        const domanda = FRASI[linguaVoce]?.email || 'Le mando la conferma per email, quale indirizzo?';
+        const domanda = varia('email', FRASI[linguaVoce]?.email || 'Le mando la conferma per email, quale indirizzo?');
         emetti(domanda, n);
         ultimoReceptionist = testoTurno.trim();
         logFrase('🤖', ultimoReceptionist);
@@ -864,30 +984,37 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
     const t = Date.now();
     let primo = true;
     const annuncia = (quando, testoLog) => { if (primo) chiamata.log(`⏱ ${testoLog} in ${quando} ms`); primo = false; };
+    // Il silenzio protettivo viaggia dentro lo stesso pacchetto della prima frase: se il
+    // percorso audio (telefono o browser) si mangia la testa, si mangia il silenzio.
+    let primaVoce = true;
+    const inviaConProtezione = (audio) => {
+      if (!primaVoce) return inviaAudio(audio);
+      primaVoce = false;
+      inviaAudio(Buffer.concat([chiamata.web ? silenzioAvvioWeb() : silenzioAvvio(), audio]));
+    };
     if (!chiamata.web) {
       // prima si aspetta che la linea sia davvero aperta, poi si parte col silenzio
       const arrivato = chiamata.aspettaIngresso ? await chiamata.aspettaIngresso() : true;
       chiamata.log(`🔌 linea pronta: ${arrivato ? 'audio del chiamante arrivato' : 'nessun audio dal chiamante'} (${Date.now() - t} ms)`);
-      inviaAudio(silenzioAvvio());
     }
     if (!salutoPronto) {
       // prove con la voce finta: si aspetta l'audio iniettato, come prima
       const audio = Buffer.concat(await Promise.all(segmentiSaluto().map((x) => fraseInCache(x.testo, x.lingua))));
       chiamata.log(`⏱ saluto pronto in ${Date.now() - t} ms`);
-      inviaAudio(audio);
+      inviaConProtezione(audio);
     } else {
       for (const x of segmentiSaluto()) {
         if (chiamata.chiusa) break;
         const pronto = salutoPronto(x.testo, x.lingua);
         if (pronto) {
           annuncia(Date.now() - t, 'saluto pronto');
-          inviaAudio(pronto);
+          inviaConProtezione(pronto);
           continue;
         }
         // saluto mai sintetizzato (primo avvio o testo appena cambiato): si trasmette mentre arriva
         await salutoInDiretta(x.testo, x.lingua, (p) => {
           annuncia(Date.now() - t, 'saluto in diretta');
-          inviaAudio(p);
+          inviaConProtezione(p);
         });
         fraseInCache(x.testo, x.lingua).catch(() => {}); // versione verificata, pronta per la prossima chiamata
       }
@@ -952,7 +1079,7 @@ export function gestisciChiamata(chiamata, dipendenze = {}) {
         muto = 0;
         frase = [...preRoll];
         preRoll = [];
-        // Se Maria parlava o stava ancora preparando la risposta, la si zittisce subito.
+        // Se il receptionist parlava o stava ancora preparando la risposta, la si zittisce subito.
         if (chiamata.sta_parlando || tastiera.inCorso) interrompi('il cliente parla sopra');
       }
       return;

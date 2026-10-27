@@ -2,7 +2,21 @@
 // dopo la sintesi: l'identita della voce clonata non cambia, si attenua soltanto
 // l'asprezza che il canale telefonico mette in evidenza.
 
+import { readFileSync } from 'node:fs';
+
 const SR = 8000;
+
+// Il registro di partenza cambia da voce a voce: le voci femminili del motore stanno troppo
+// in alto al telefono (0,84 le porta nel registro giusto), una voce maschile clonata è già
+// al suo posto e va lasciata com'è (1). Il valore, se serve, sta in voci/<nome>.json ("tono").
+export function fattoreTono(campione) {
+  if (!campione || !/^[\w-]+\.wav$/.test(campione)) return 0.84;
+  try {
+    const f = new URL(`../voci/${campione.replace(/\.wav$/, '.json')}`, import.meta.url);
+    const tono = Number(JSON.parse(readFileSync(f, 'utf8')).tono);
+    return Number.isFinite(tono) && tono >= 0.6 && tono <= 1.15 ? tono : 0.84;
+  } catch { return 0.84; }
+}
 
 class Biquad {
   constructor({ b0, b1, b2, a1, a2 }) {
@@ -231,7 +245,7 @@ function scaffale(tipo, frequenza, db, pendenza = 0.8, sr = SR) {
 
 const limita16 = (n) => Math.max(-32768, Math.min(32767, Math.round(n)));
 
-export const VERSIONE_TIMBRO = '5';
+export const VERSIONE_TIMBRO = '7';
 
 export { VocePiuCalda };
 
@@ -255,21 +269,24 @@ export function creaEqualizzatoreVoce(campione, sr = SR) {
 
 export function creaAddolcitoreVoce(campione, sr = SR) {
   // Catena completa: prima il tono (così l'equalizzazione colpisce le frequenze giuste),
-  // poi il timbro, infine il livello.
-  const calda = new VocePiuCalda(0.84);
+  // poi il timbro, infine il livello. Se il tono è già quello giusto (voce maschile clonata)
+  // l'abbassamento si salta: rifare i grani senza doverli spostare aggiunge solo un fruscio
+  // metallico che va e viene, ed è proprio quello che si sentiva a tratti.
+  const tono = fattoreTono(campione);
+  const calda = Math.abs(tono - 1) < 0.005 ? null : new VocePiuCalda(tono);
   const livellatore = new LivellatoreNaturale(sr);
   const equalizza = creaEqualizzatoreVoce(campione, sr);
   return {
     // Prima il tono (così l'equalizzazione colpisce le frequenze giuste), poi il livello.
     applica(pcm) {
-      return livellatore.applica(equalizza(calda.applica(pcm)));
+      return livellatore.applica(equalizza(calda ? calda.applica(pcm) : pcm));
     },
     chiudi() {
-      const coda = calda.chiudi();
-      return coda.length ? livellatore.applica(equalizza(coda)) : coda;
+      const coda = calda ? calda.chiudi() : null;
+      return coda && coda.length ? livellatore.applica(equalizza(coda)) : Buffer.alloc(0);
     },
     riparti() {
-      calda.riparti();
+      calda?.riparti();
     },
   };
 }

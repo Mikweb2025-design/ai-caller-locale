@@ -1,5 +1,5 @@
 // Piccoli tocchi di tastiera durante l'attesa del cervello. L'audio e gia nel formato
-// telefonico μ-law 8 kHz e viene inviato senza mark: non conta come voce di Maria.
+// telefonico μ-law 8 kHz e viene inviato senza mark: non conta come voce del receptionist.
 import { aMulaw, daMulaw } from './voce.mjs';
 
 const SR = 8000;
@@ -231,7 +231,7 @@ function suonoUfficio(livello, casuale) {
 }
 
 // Un ritaglio di ufficio da mandare dopo la voce: il segno che la stanza c'è anche quando
-// Maria tace (un foglio spostato, la sedia, la tazzina).
+// il receptionist tace (un foglio spostato, la sedia, la tazzina).
 export function creaCodaUfficio({ volume = 0.02, tipo = 'ufficio', casuale = Math.random } = {}) {
   const livello = limita(volume, 0, VOLUME_MASSIMO);
   if (livello === 0) return Buffer.alloc(0);
@@ -311,7 +311,7 @@ export function fermaAttesaPrimaDellaVoce(attesa, svuota) {
   return avevaAudio;
 }
 
-// Sorgente continua di suoni d'ufficio da mescolare sotto la voce di Maria: a ogni pezzo di
+// Sorgente continua di suoni d'ufficio da mescolare sotto la voce del receptionist: a ogni pezzo di
 // voce si chiede lo stesso numero di byte di sottofondo, dentro ci sono i tocchi nel loro ritmo.
 export function creaSuonoContinuo({
   attivo = () => true,
